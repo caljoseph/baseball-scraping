@@ -118,7 +118,7 @@ class GameState:
         if player_id is None or player_id == -1:
             return None
         player_name = player_map.get(player_id, "Unknown")
-        return f"{player_id} - {player_name}"
+        return f"{player_name}"
 
     def empty_bases(self):
         self.bases_occupied = {

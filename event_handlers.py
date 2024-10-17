@@ -471,8 +471,11 @@ def _map_position_name_to_enum(position_name):
     position_mapping = {
         "catcher": FieldPosition.CATCHER,
         "first baseman": FieldPosition.FIRST_BASE,
+        "first base": FieldPosition.FIRST_BASE,
         "second baseman": FieldPosition.SECOND_BASE,
+        "second base": FieldPosition.SECOND_BASE,
         "third baseman": FieldPosition.THIRD_BASE,
+        "third base": FieldPosition.THIRD_BASE,
         "shortstop": FieldPosition.SHORTSTOP,
         "left fielder": FieldPosition.LEFT_FIELD,
         "left field": FieldPosition.LEFT_FIELD,
