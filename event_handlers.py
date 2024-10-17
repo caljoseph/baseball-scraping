@@ -4,7 +4,6 @@ import string
 from game_state import Base, Half, FieldPosition, GameState
 
 
-
 def update_outs(description, game_state):
     match = re.search(r'(\d+) out(?:s)?$', description)
     if match:
@@ -31,6 +30,7 @@ def remove_middle_initials(name):
     else:
         return name
 
+
 def process_name(name):
     parts = name.split()
     if len(parts) >= 3 and all(len(part) == 2 and part.endswith('.') for part in parts[:-1]):
@@ -44,6 +44,7 @@ def process_name(name):
     name = name.replace("luis garcia", "luis garcia jr.").replace("Luis Garcia", "Luis Garcia Jr.")
 
     return remove_middle_initials(name.lower())
+
 
 def get_closest_player_id(player_name, player_map):
     print(f"Attempting to get player ID for: {player_name}")
@@ -290,17 +291,8 @@ def handle_offensive_sub(description, game_state, player_map):
         print(f"Error: Could not parse player names from description: {description}")
         return
 
-    new_player_name = match.group(1).strip()
-    old_player_name = match.group(2).strip()
-
-    print(f"New player name before processing: {new_player_name}")
-    print(f"Old player name before processing: {old_player_name}")
-
-    new_player_name = process_name(new_player_name)
-    old_player_name = process_name(old_player_name)
-
-    print(f"New player name after processing: {new_player_name}")
-    print(f"Old player name after processing: {old_player_name}")
+    new_player_name = process_name(match.group(1).strip())
+    old_player_name = process_name(match.group(2).strip())
 
     new_player_id = get_closest_player_id(new_player_name, player_map)
     old_player_id = get_closest_player_id(old_player_name, player_map)
@@ -312,6 +304,15 @@ def handle_offensive_sub(description, game_state, player_map):
 
     team = 'away' if game_state.half == Half.TOP else 'home'
 
+    if team == 'away':
+        old_player_is_pitcher = (game_state.away_pitcher == old_player_id)
+    else:
+        old_player_is_pitcher = (game_state.home_pitcher == old_player_id)
+
+    if old_player_is_pitcher:
+        game_state.away_pitcher = None
+        print("found an offensive sub where the person being subbed out is the pitcher")
+
     _replace_in_batting_order(game_state, team, old_player_id, new_player_id)
 
     current_dh = game_state.get_position_player(team, FieldPosition.DESIGNATED_HITTER)
@@ -319,7 +320,6 @@ def handle_offensive_sub(description, game_state, player_map):
         _replace_position_player(game_state, team, old_player_id, None)
     else:
         _replace_position_player(game_state, team, old_player_id, new_player_id)
-
 
     if "Pinch-runner" in description:
         _replace_on_base(game_state, old_player_id, new_player_id)
@@ -680,7 +680,7 @@ def _replace_position_player(game_state, team, old_player_id, new_player_id):
             return
 
     # If the old player is the pitcher, replace the pitcher
-    if old_player_id == current_pitcher:
+    if old_player_id == current_pitcher or current_pitcher is None:
         print(f"Replacing pitcher for {team}: {old_player_id} with {new_player_id}")
         if team == 'home':
             game_state.home_pitcher = new_player_id

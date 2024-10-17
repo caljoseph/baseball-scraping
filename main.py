@@ -13,7 +13,7 @@ from statcast_at_bats import get_at_bat_summary_for_game
 
 def create_dataset(num_games):
     driver = setup_webdriver()
-    game_url_df = pd.read_csv("urls/single_game.csv")
+    game_url_df = pd.read_csv("urls/gameday_urls2023.csv")
     os.makedirs('games', exist_ok=True)
     error_log = []
 
@@ -21,6 +21,8 @@ def create_dataset(num_games):
         for index, row in game_url_df.iterrows():
             if index >= num_games:
                 break
+            if int(index) < 200:
+                continue
 
             game_pk = row['game_pk']
             box_url = row['box_url']
@@ -28,8 +30,8 @@ def create_dataset(num_games):
             home_abbr = row['home_abbr']
             away_abbr = row['away_abbr']
 
-            if game_pk != 716558:
-                continue
+            # if game_pk != 718646:
+            #     continue
 
             try:
                 # Read the input CSV
@@ -147,6 +149,13 @@ def print_game_state(game_state, home_player_map, away_player_map):
 
 
 def process_event(event, game_state, player_map, csv_filename, at_bat_summary, inning_number, half):
+    # if these two are different it's a new inning, and we need to reset outs
+    if game_state.inning != inning_number:
+        game_state.outs = 0
+    # Set the game state inning and half
+    game_state.inning = inning_number
+    game_state.half = half
+
     print("Event info:")
     print(f"Inning: {inning_number}")
     print("   type: ", event['type'])
@@ -159,12 +168,6 @@ def process_event(event, game_state, player_map, csv_filename, at_bat_summary, i
     print("   gamestate.half: ", game_state.half)
     print("   gamestate.outs: ", game_state.outs)
 
-    # if these two are different it's a new inning, and we need to reset outs
-    if game_state.inning != inning_number:
-        game_state.outs = 0
-    # Set the game state inning and half
-    game_state.inning = inning_number
-    game_state.half = half
 
     # what happened here was that because the offensive sub was in the middle of the at bat, we sunk during the
     # game delay, then when we got to the offensive sub we weren't able to change it back
