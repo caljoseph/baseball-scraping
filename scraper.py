@@ -126,7 +126,7 @@ def process_box(driver, box_url):
     ts_total = time.time()
 
     ts = time.time()
-    driver.set_page_load_timeout(3)  # Increased slightly to 5 seconds
+    driver.set_page_load_timeout(2)
     try:
         driver.get(box_url)
     except TimeoutException:
@@ -186,7 +186,7 @@ def process_summary(driver, summary_url, home_abbr, away_abbr):
 
     # Set a short page load timeout and attempt to load the summary page
     ts = time.time()
-    driver.set_page_load_timeout(3)
+    driver.set_page_load_timeout(2)
     try:
         driver.get(summary_url)
     except TimeoutException:

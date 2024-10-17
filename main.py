@@ -28,7 +28,7 @@ def create_dataset(num_games):
             home_abbr = row['home_abbr']
             away_abbr = row['away_abbr']
 
-            # if game_pk != 717706:
+            # if game_pk != 718343:
             #     continue
 
             try:
@@ -191,7 +191,7 @@ def process_event(event, game_state, player_map, csv_filename, at_bat_summary, i
 
 
     # Save off the pre-event game state to the csv
-    decision_point = game_state.create_decision_point(event, is_decision)
+    decision_point = game_state.create_decision_point(event, is_decision, player_map)
     write_decision_point_to_csv(csv_filename, decision_point)
 
     # Get the handler and modify the game_state
@@ -419,7 +419,7 @@ possible_decision_events = [
 ]
 
 if __name__ == "__main__":
-    num_games = 50
+    num_games = 300
     create_dataset(num_games)
     # Redirect stdout to a file
     # log_file = f"output_{num_games}_games.log"

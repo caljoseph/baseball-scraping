@@ -1,0 +1,14 @@
+Error processing game 718515: list index out of range
+Traceback (most recent call last):
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 53, in create_dataset
+    home_pitcher=home_bullpen[0],
+IndexError: list index out of range
+
+
+Error processing game 717748: list index out of range
+Traceback (most recent call last):
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 53, in create_dataset
+    home_pitcher=home_bullpen[0],
+IndexError: list index out of range
+
+

@@ -1,7 +1,8 @@
+import difflib
 import re
 import string
+from game_state import Base, Half, FieldPosition, GameState
 
-from game_state import Base, Half, FieldPosition
 
 
 def update_outs(description, game_state):
@@ -20,20 +21,63 @@ def handle_out(description, game_state, player_map):
     # return f"Updated outs to {outs}. {description}"
 
 
+def remove_middle_initials(name):
+    # Remove middle initials from the name
+    parts = name.split()
+    if len(parts) > 2:
+        # Keep first and last parts
+        parts = [part for part in parts if len(part) > 1]
+        return ' '.join(parts)
+    else:
+        return name
+
+def process_name(name):
+    parts = name.split()
+    if len(parts) >= 3 and all(len(part) == 2 and part.endswith('.') for part in parts[:-1]):
+        name = ''.join(parts[:-1]) + ' ' + parts[-1]
+
+    name = name.strip().rstrip(string.punctuation)
+
+    # Replace "joshua" with "josh"
+    name = name.replace("joshua", "josh").replace("Joshua", "josh")
+    # Replace "luis garcia" with "luis garcia jr."
+    name = name.replace("luis garcia", "luis garcia jr.").replace("Luis Garcia", "Luis Garcia Jr.")
+
+    return remove_middle_initials(name.lower())
+
+def get_closest_player_id(player_name, player_map):
+    print(f"Attempting to get player ID for: {player_name}")
+
+    player_name_processed = process_name(player_name)
+
+    # Build a mapping from processed names to player IDs
+    reversed_player_map = {process_name(name): player_id for player_id, name in player_map.items()}
+
+    names_list = list(reversed_player_map.keys())
+
+    # Use difflib to find the closest match
+    matches = difflib.get_close_matches(player_name_processed, names_list, n=1, cutoff=0.6)
+    if matches:
+        closest_name = matches[0]
+        player_id = reversed_player_map[closest_name]
+        print(f"Found closest match for '{player_name}': '{closest_name}' (ID: {player_id})")
+        return player_id
+    else:
+        print(f"Warning: No close match found for player name '{player_name}'")
+        return None
+
+
 def handle_stolen_base(description, game_state, player_map):
-    # Reverse the player_map to look up player ID by name (using case-insensitive comparison)
-    reversed_player_map = {name.lower(): player_id for player_id, name in player_map.items()}
+    if ':' in description:
+        description = description.split(':', 1)[1].strip()
+    player_name = description.split(" steals")[0].strip()
 
-    # Extract player name from description (e.g., 'Elly De La Cruz steals (14) 2nd base.')
-    player_name = description.split(" steals")[0].strip().lower()
+    player_id = get_closest_player_id(player_name, player_map)
 
-    # Check if the player exists in the reversed player map
-    if player_name not in reversed_player_map:
-        return f"Error: Player '{player_name}' not found in player map."
+    if not player_id:
+        print(f"Error: Player '{player_name}' not found in player map.")
+        return
 
-    player_id = reversed_player_map[player_name]
-
-    # Check if the player is currently on any base
     current_base = None
     for base, occupant in game_state.bases_occupied.items():
         if occupant == player_id:
@@ -41,61 +85,52 @@ def handle_stolen_base(description, game_state, player_map):
             break
 
     if not current_base:
-        return f"Error: Player '{player_name}' (ID: {player_id}) not found on any base."
+        print(f"Error: Player '{player_name}' (ID: {player_id}) not found on any base.")
+        return
 
-    # Determine the new base based on the type of stolen base
     if "2nd base" in description:
         new_base = Base.SECOND
     elif "3rd base" in description:
         new_base = Base.THIRD
     elif "home" in description:
         new_base = None  # Stealing home means scoring
+    else:
+        print(f"Error: Unrecognized stolen base destination in description: '{description}'")
+        return
 
-    # Handle the base update
     if new_base:
-        # Clear the player from their current base and move to the new base
         game_state.bases_occupied[current_base] = -1
         game_state.bases_occupied[new_base] = player_id
-        return f"Player '{player_name}' (ID: {player_id}) successfully stole {new_base.name.lower()}."
-
+        print(f"Player '{player_name}' (ID: {player_id}) successfully stole {new_base.name.lower()}.")
     else:
-        # Stealing home: increment score and clear the base
         game_state.bases_occupied[current_base] = -1
-        return f"Player '{player_name}' (ID: {player_id}) successfully stole home. Score updated."
+        print(f"Player '{player_name}' (ID: {player_id}) successfully stole home. Score updated.")
 
 
 def handle_wild_pitch(description, game_state, player_map):
-    # Replace periods in known abbreviations with placeholders
     abbreviations = ['Jr.', 'Sr.', 'II', 'III', 'IV', 'V']
     for abbr in abbreviations:
         description = description.replace(abbr, abbr.replace('.', '<dot>'))
 
-    # Now split on '. '
     sentences = description.split('. ')
-    # Restore the periods in abbreviations
     sentences = [s.replace('<dot>', '.') for s in sentences]
 
-    pitcher_info = sentences[0]  # Part describing the wild pitch by the pitcher
-    base_runner_info = sentences[1:]  # Remaining sentences describe runner movements
+    pitcher_info = sentences[0]
+    base_runner_info = sentences[1:]
 
-    # Reverse the player_map for easier name-based lookup (case-insensitive)
-    reversed_player_map = {name.lower(): player_id for player_id, name in player_map.items()}
-
-    # Process base runner movements
     for runner_info in base_runner_info:
         runner_info = runner_info.strip().rstrip('.')
 
         if not runner_info:
-            continue  # Skip empty strings
+            continue
 
         if "scores" in runner_info:
-            # Handle the case where the runner scores
-            runner_name = runner_info.replace(" scores", "").strip().lower()
+            runner_name = runner_info.replace(" scores", "").strip()
 
-            if runner_name in reversed_player_map:
-                player_id = reversed_player_map[runner_name]
-            else:
-                return f"Error: Player '{runner_name}' not found in player map."
+            player_id = get_closest_player_id(runner_name, player_map)
+            if not player_id:
+                print(f"Error: Player '{runner_name}' not found in player map.")
+                continue
 
             current_base = next(
                 (base for base, occupant in game_state.bases_occupied.items() if occupant == player_id),
@@ -103,22 +138,20 @@ def handle_wild_pitch(description, game_state, player_map):
             )
 
             if not current_base:
-                return f"Error: Player '{runner_name}' (ID: {player_id}) not found on any base."
+                print(f"Error: Player '{runner_name}' (ID: {player_id}) not found on any base.")
+                continue
 
             game_state.bases_occupied[current_base] = -1
-            # Update the score if needed
             print(f"Player '{runner_name}' (ID: {player_id}) scored.")
 
         elif " to " in runner_info:
-            # Handle the case where the runner advances to a base
             runner_name, base_movement = runner_info.rsplit(" to ", 1)
+            runner_name = runner_name.strip()
 
-            runner_name = runner_name.strip().lower()
-
-            if runner_name in reversed_player_map:
-                player_id = reversed_player_map[runner_name]
-            else:
-                return f"Error: Player '{runner_name}' not found in player map."
+            player_id = get_closest_player_id(runner_name, player_map)
+            if not player_id:
+                print(f"Error: Player '{runner_name}' not found in player map.")
+                continue
 
             current_base = next(
                 (base for base, occupant in game_state.bases_occupied.items() if occupant == player_id),
@@ -126,63 +159,50 @@ def handle_wild_pitch(description, game_state, player_map):
             )
 
             if not current_base:
-                return f"Error: Player '{runner_name}' (ID: {player_id}) not found on any base."
+                print(f"Error: Player '{runner_name}' (ID: {player_id}) not found on any base.")
+                continue
 
             if "2nd" in base_movement or "second" in base_movement:
                 new_base = Base.SECOND
             elif "3rd" in base_movement or "third" in base_movement:
                 new_base = Base.THIRD
             else:
-                return f"Error: Unrecognized base movement for '{runner_name}': '{base_movement}'"
+                print(f"Error: Unrecognized base movement for '{runner_name}': '{base_movement}'")
+                continue
 
             game_state.bases_occupied[current_base] = -1
             game_state.bases_occupied[new_base] = player_id
             print(f"Player '{runner_name}' (ID: {player_id}) moved to {new_base.name.lower()}.")
 
-        else:
-            # Handle other cases if necessary
-            continue
-
-    return None  # No errors, return None
-
 
 def handle_passed_ball(description, game_state, player_map):
-    # Extract catcher and base runner information from the description
     parts = description.split(". ")
-    catcher_info = parts[0]  # The part describing the passed ball by the catcher
-    base_runner_info = parts[1:]  # The part(s) describing the runner movements
+    catcher_info = parts[0]
+    base_runner_info = parts[1:]
 
-    # Reverse the player_map for easier name-based lookup (case-insensitive)
-    reversed_player_map = {name.lower(): player_id for player_id, name in player_map.items()}
-
-    # Process base runner movements
     runner_movements = []
     for runner_info in base_runner_info:
         runner_info = runner_info.strip()
         if "scores" in runner_info:
-            runner_name = runner_info.replace(" scores", "").strip().lower()
+            runner_name = runner_info.replace(" scores", "").strip()
             runner_movements.append((runner_name, "scores"))
         elif " to " in runner_info:
             runner_name, base_movement = runner_info.split(" to ")
-            runner_name = runner_name.strip().lower()
+            runner_name = runner_name.strip()
             runner_movements.append((runner_name, base_movement.strip()))
 
-    # Sort runner movements: scores first, then 3rd, then 2nd
     runner_movements.sort(key=lambda x: (
         0 if x[1] == "scores" else
         1 if "3rd" in x[1] else
         2 if "2nd" in x[1] else 3
     ))
 
-    # Process runner movements in the sorted order
     for runner_name, movement in runner_movements:
-        if runner_name in reversed_player_map:
-            player_id = reversed_player_map[runner_name]
-        else:
+        player_id = get_closest_player_id(runner_name, player_map)
+        if not player_id:
             print(f"Error: Player '{runner_name}' not found in player map.")
             continue
 
-        # Find the current base of the player
         current_base = None
         for base, occupant in game_state.bases_occupied.items():
             if occupant == player_id:
@@ -209,44 +229,32 @@ def handle_passed_ball(description, game_state, player_map):
             game_state.bases_occupied[new_base] = player_id
             print(f"Player '{runner_name}' (ID: {player_id}) moved to {new_base.name.lower()}.")
 
-    return None
-
 
 def handle_balk(description, game_state, player_map):
-    # Ensure that the description contains "on a balk"
     if "on a balk" not in description:
-        return "Error: Not a valid balk event description."
+        print("Error: Not a valid balk event description.")
+        return
 
-    # Split the description at "batting," to focus on the part where runners advance
     if "batting," in description:
-        parts = description.split("batting, ")[1]  # Get the part after "batting,"
+        parts = description.split("batting, ")[1]
     else:
-        return "Error: Malformed balk description."
+        print("Error: Malformed balk description.")
+        return
 
-    # Now we split at " on a balk" to extract individual runner movements
     base_runner_info = parts.split(" on a balk. ")
 
-    # Reverse the player_map for easier name-based lookup (case-insensitive)
-    reversed_player_map = {name.lower(): player_id for player_id, name in player_map.items()}
-
-    # Process each runner movement
     for runner_info in base_runner_info:
         runner_info = runner_info.strip()
 
-        # Example: "Zack Short advances to 3rd."
         if "advances to" in runner_info:
-            # Handle the case where the runner advances to a base
             runner_name, base_movement = runner_info.split(" advances to ")
+            runner_name = runner_name.strip()
 
-            runner_name = runner_name.strip().lower()
+            player_id = get_closest_player_id(runner_name, player_map)
+            if not player_id:
+                print(f"Error: Player '{runner_name}' not found in player map.")
+                continue
 
-            # If the player is in the map, get their player ID
-            if runner_name in reversed_player_map:
-                player_id = reversed_player_map[runner_name]
-            else:
-                return f"Error: Player '{runner_name}' not found in player map."
-
-            # Find the current base of the player
             current_base = None
             for base, occupant in game_state.bases_occupied.items():
                 if occupant == player_id:
@@ -254,166 +262,26 @@ def handle_balk(description, game_state, player_map):
                     break
 
             if not current_base:
-                return f"Error: Player '{runner_name}' (ID: {player_id}) not found on any base."
+                print(f"Error: Player '{runner_name}' (ID: {player_id}) not found on any base.")
+                continue
 
-            # Determine the target base
             if "2nd" in base_movement:
                 new_base = Base.SECOND
             elif "3rd" in base_movement:
                 new_base = Base.THIRD
             elif "scores" in base_movement:
-                new_base = None  # The runner scores
+                new_base = None
             else:
-                return f"Error: Unrecognized base movement for '{runner_name}': '{base_movement}'"
+                print(f"Error: Unrecognized base movement for '{runner_name}': '{base_movement}'")
+                continue
 
-            # Handle the base update
             if new_base:
-                # Clear the player from their current base and move to the new base
                 game_state.bases_occupied[current_base] = -1
                 game_state.bases_occupied[new_base] = player_id
                 print(f"Player '{runner_name}' (ID: {player_id}) moved to {new_base.name.lower()}.")
             else:
-                # If the player scores, remove them from the base (scoring handled elsewhere)
                 game_state.bases_occupied[current_base] = -1
                 print(f"Player '{runner_name}' (ID: {player_id}) scored.")
-
-    return None  # No errors, return None
-
-
-def handle_pickoff_error_1b(description, game_state, player_map):
-    print("Handling Pickoff Error 1B")
-
-    # Reverse the player_map for case-insensitive name lookup
-    reversed_player_map = {name.lower(): player_id for player_id, name in player_map.items()}
-
-    # Track players who have scored to avoid putting them back on a base
-    scored_players = []
-
-    # Extract any player names mentioned in the description for scoring
-    if "scores" in description:
-        # Find the player's name who scores
-        for player_name in reversed_player_map.keys():
-            if player_name in description.lower():
-                player_id = reversed_player_map[player_name]
-
-                # Remove the player from their base
-                for base, occupant in game_state.bases_occupied.items():
-                    if occupant == player_id:
-                        game_state.bases_occupied[base] = -1
-                        scored_players.append(player_id)
-                        print(f"Player '{player_name}' (ID: {player_id}) scored.")
-                        break
-
-    # Handle base advancements, skipping scored players
-    runner_on_first = game_state.bases_occupied[Base.FIRST]
-    runner_on_second = game_state.bases_occupied[Base.SECOND]
-
-    # If there's a runner on 1st and they haven't scored, move them to 2nd
-    if runner_on_first != -1 and runner_on_first not in scored_players:
-        game_state.bases_occupied[Base.FIRST] = -1
-        game_state.bases_occupied[Base.SECOND] = runner_on_first
-        print(f"Runner on 1st advanced to 2nd. (Player ID: {runner_on_first})")
-
-    # If there's a runner on 2nd and they haven't scored, move them to 3rd
-    if runner_on_second != -1 and runner_on_second not in scored_players:
-        game_state.bases_occupied[Base.SECOND] = -1
-        game_state.bases_occupied[Base.THIRD] = runner_on_second
-        print(f"Runner on 2nd advanced to 3rd. (Player ID: {runner_on_second})")
-
-
-def handle_pickoff_error_2b(description, game_state, player_map):
-    print("Handling Pickoff Error 2B")
-
-    # Reverse the player_map for case-insensitive name lookup
-    reversed_player_map = {name.lower(): player_id for player_id, name in player_map.items()}
-
-    # Track players who have scored to avoid putting them back on a base
-    scored_players = []
-
-    # Extract any player names mentioned in the description for scoring
-    if "scores" in description:
-        for player_name in reversed_player_map.keys():
-            if player_name in description.lower():
-                player_id = reversed_player_map[player_name]
-
-                # Remove the player from their base
-                for base, occupant in game_state.bases_occupied.items():
-                    if occupant == player_id:
-                        game_state.bases_occupied[base] = -1
-                        scored_players.append(player_id)
-                        print(f"Player '{player_name}' (ID: {player_id}) scored.")
-                        break
-
-    # Handle base advancements, skipping scored players
-    runner_on_second = game_state.bases_occupied[Base.SECOND]
-    runner_on_first = game_state.bases_occupied[Base.FIRST]
-
-    # If there's a runner on 2nd and they haven't scored, move them to 3rd
-    if runner_on_second != -1 and runner_on_second not in scored_players:
-        game_state.bases_occupied[Base.SECOND] = -1
-        game_state.bases_occupied[Base.THIRD] = runner_on_second
-        print(f"Runner on 2nd advanced to 3rd. (Player ID: {runner_on_second})")
-
-    # If there's a runner on 1st and they haven't scored, move them to 2nd
-    if runner_on_first != -1 and runner_on_first not in scored_players:
-        game_state.bases_occupied[Base.FIRST] = -1
-        game_state.bases_occupied[Base.SECOND] = runner_on_first
-        print(f"Runner on 1st advanced to 2nd. (Player ID: {runner_on_first})")
-
-
-def handle_pickoff_error_3b(description, game_state, player_map):
-    print("Handling Pickoff Error 3B")
-
-    # Reverse the player_map for case-insensitive name lookup
-    reversed_player_map = {name.lower(): player_id for player_id, name in player_map.items()}
-
-    # Track players who have scored to avoid putting them back on a base
-    scored_players = []
-
-    # Extract any player names mentioned in the description for scoring
-    if "scores" in description:
-        for player_name in reversed_player_map.keys():
-            if player_name in description.lower():
-                player_id = reversed_player_map[player_name]
-
-                # Remove the player from their base
-                for base, occupant in game_state.bases_occupied.items():
-                    if occupant == player_id:
-                        game_state.bases_occupied[base] = -1
-                        scored_players.append(player_id)
-                        print(f"Player '{player_name}' (ID: {player_id}) scored.")
-                        break
-
-
-def process_name(name):
-    parts = name.split()
-    if len(parts) >= 3 and all(len(part) == 2 and part.endswith('.') for part in parts[:-1]):
-        name = ''.join(parts[:-1]) + ' ' + parts[-1]
-
-    if name.lower().endswith("jr."):
-        name = name.strip()
-    else:
-        name = name.rstrip(string.punctuation)
-
-    # Replace "joshua" or "Joshua" with "josh"
-    name = name.replace("joshua", "josh").replace("Joshua", "josh")
-
-    return remove_middle_initials(name.lower())
-
-
-def get_player_id(player_name, player_map):
-    print(f"Attempting to get player ID for: {player_name}")
-
-    reversed_player_map = {process_name(name): player_id for player_id, name in player_map.items()}
-
-    player_id = reversed_player_map.get(player_name)
-
-    if player_id:
-        print(f"Found player ID: {player_id}")
-    else:
-        print(f"No player ID found for {player_name}")
-
-    return player_id
 
 
 def handle_offensive_sub(description, game_state, player_map):
@@ -434,17 +302,24 @@ def handle_offensive_sub(description, game_state, player_map):
     print(f"New player name after processing: {new_player_name}")
     print(f"Old player name after processing: {old_player_name}")
 
-    new_player_id = get_player_id(new_player_name, player_map)
-    old_player_id = get_player_id(old_player_name, player_map)
+    new_player_id = get_closest_player_id(new_player_name, player_map)
+    old_player_id = get_closest_player_id(old_player_name, player_map)
 
     if not new_player_id or not old_player_id:
-        print(f"Warning: Could not find one or both players in the player map: {new_player_name}, {old_player_name}")
+        print(
+            f"Warning: Could not find one or both players in the player map: '{new_player_name}', '{old_player_name}'")
         return
 
     team = 'away' if game_state.half == Half.TOP else 'home'
 
     _replace_in_batting_order(game_state, team, old_player_id, new_player_id)
-    _replace_position_player(game_state, team, old_player_id, new_player_id)
+
+    current_dh = game_state.get_position_player(team, FieldPosition.DESIGNATED_HITTER)
+    if old_player_id != current_dh:
+        _replace_position_player(game_state, team, old_player_id, None)
+    else:
+        _replace_position_player(game_state, team, old_player_id, new_player_id)
+
 
     if "Pinch-runner" in description:
         _replace_on_base(game_state, old_player_id, new_player_id)
@@ -462,8 +337,8 @@ def handle_pitching_sub(description, game_state, player_map):
         old_player_name = process_name(' '.join(parts[-5:-3]))
         batting_position = parts[parts.index("batting") + 1].rstrip(',')
 
-        new_player_id = get_player_id(new_player_name, player_map)
-        old_player_id = get_player_id(old_player_name, player_map)
+        new_player_id = get_closest_player_id(new_player_name, player_map)
+        old_player_id = get_closest_player_id(old_player_name, player_map)
 
         if not new_player_id or not old_player_id:
             print(
@@ -482,9 +357,11 @@ def handle_pitching_sub(description, game_state, player_map):
 
     new_pitcher_name = process_name(match.group(1))
     old_pitcher_name = process_name(match.group(2))
+    print(f"New pitcher name: {new_pitcher_name}")
+    print(f"Old pitcher name: {old_pitcher_name}")
 
-    new_pitcher_id = get_player_id(new_pitcher_name, player_map)
-    old_pitcher_id = get_player_id(old_pitcher_name, player_map)
+    new_pitcher_id = get_closest_player_id(new_pitcher_name, player_map)
+    old_pitcher_id = get_closest_player_id(old_pitcher_name, player_map)
 
     if not new_pitcher_id or not old_pitcher_id:
         print(
@@ -503,8 +380,8 @@ def handle_pitching_sub(description, game_state, player_map):
 
 def handle_defensive_sub(description, game_state, player_map):
     new_player_name, old_player_name = _extract_players_from_def_sub_desc(description)
-    new_player_id = get_player_id(new_player_name.lower(), player_map)
-    old_player_id = get_player_id(old_player_name.lower(), player_map)
+    new_player_id = get_closest_player_id(new_player_name, player_map)
+    old_player_id = get_closest_player_id(old_player_name, player_map)
 
     team = 'home' if game_state.half == Half.TOP else 'away'
 
@@ -521,60 +398,178 @@ def handle_defensive_sub(description, game_state, player_map):
 
 
 def handle_defensive_switch(description, game_state, player_map):
-    if "remains in the game" in description:
-        print("No defensive switch required as the player remains in the game.")
-        return
+    # Determine the format of the description and extract relevant details
+    if "remains in the game as" in description:
+        # Format: "player_name remains in the game as the new_position"
+        player_name_part = description.split("remains in the game as")[0].strip()
+        to_position_name = description.split("remains in the game as the ")[1].strip().lower()
+        from_position = None  # No specified from_position in this case
+    else:
+        # Format: "switch from old_position to new_position for player_name"
+        from_position_name = description.split("switch from ")[1].split(" to ")[0].strip().lower()
+        to_position_name = description.split(" to ")[1].split(" for ")[0].strip().lower()
+        player_name_part = description.split("for")[1].strip()
+        from_position = _map_position_name_to_enum(from_position_name)
 
-    from_position_name = description.split("switch from ")[1].split(" to ")[0].strip().lower()
-    to_position_name = description.split(" to ")[1].split(" for ")[0].strip().lower()
-    player_name_part = description.split("for")[1].strip()
-
+    # Clean the player's name and get the player ID
     player_name = process_name(player_name_part)
-    player_id = get_player_id(player_name, player_map)
+    player_id = get_closest_player_id(player_name, player_map)
 
     if not player_id:
         print(f"Warning: Player '{player_name}' not found in the player map.")
         return
 
+    # Determine the team based on the game state
     team = 'home' if game_state.half == Half.TOP else 'away'
 
-    # Special case for Ohtani (or any pitcher to DH switch)
-    if from_position_name == 'pitcher' and to_position_name == 'designated hitter':
-        from_position = FieldPosition.DESIGNATED_HITTER  # We'll treat pitcher as DH for this swap
-        to_position = FieldPosition.DESIGNATED_HITTER
-        print(f"Special case: {player_name} switching from pitcher to designated hitter.")
-    else:
-        from_position = FieldPosition[from_position_name.replace(" ", "_").upper()]
-        to_position = FieldPosition[to_position_name.replace(" ", "_").upper()]
+    # Map the to_position name to the corresponding FieldPosition enum
+    to_position = _map_position_name_to_enum(to_position_name)
+    if to_position is None:
+        print(f"Warning: Could not map '{to_position_name}' to a valid field position.")
+        return
 
-    position_players = game_state.home_position_players if team == 'home' else game_state.away_position_players
+    # Handle special cases involving the pitcher and DH
+    current_pitcher = game_state.home_pitcher if team == 'home' else game_state.away_pitcher
+    current_dh = game_state.get_position_player(team, FieldPosition.DESIGNATED_HITTER)
+    has_dh = game_state.home_has_dh if team == 'home' else game_state.away_has_dh
 
-    if from_position == FieldPosition.DESIGNATED_HITTER or to_position == FieldPosition.DESIGNATED_HITTER:
-        setattr(game_state, f"{team}_has_dh", True)  # Ensure DH is set to True in this case
-        print(f"{team.capitalize()} team is using a DH as '{player_name}' is now the designated hitter.")
+    # If the team does not have a DH, handle replacements for both the pitcher and DH
+    if not has_dh:
+        if player_id == current_pitcher or player_id == current_dh:
+            # Replace both the pitcher and the DH with the new player
+            print(f"Replacing pitcher and DH for {team}: {player_id}")
+            game_state.set_position_player(team, FieldPosition.DESIGNATED_HITTER, player_id)
+            if team == 'home':
+                game_state.home_pitcher = player_id
+            else:
+                game_state.away_pitcher = player_id
+            return
 
-    # For the Ohtani case, we're essentially just updating the DH position
-    if from_position == FieldPosition.DESIGNATED_HITTER and to_position == FieldPosition.DESIGNATED_HITTER:
-        position_players[FieldPosition.DESIGNATED_HITTER] = player_id
-        print(f"Updated designated hitter to {player_name} for {team} team.")
-    else:
-        player_in_from_position = position_players[from_position]
-        player_in_to_position = position_players[to_position]
+    # Update the defensive positions in the game state using set_position_player method
+    if from_position:
+        current_player_in_from_position = game_state.get_position_player(team, from_position)
+        if current_player_in_from_position == player_id:
+            # Clear the from position if the player is indeed occupying it
+            game_state.set_position_player(team, from_position, None)
+            print(f"Cleared {from_position.name.lower()} position for {team} team as {player_name} moves.")
 
-        position_players[from_position] = player_in_to_position
-        position_players[to_position] = player_in_from_position
+    # Move the player to the new position
+    game_state.set_position_player(team, to_position, player_id)
+    print(f"Moved {player_name} to {to_position.name.lower()} for {team} team.")
 
-        print(
-            f"Player '{player_name}' moved from {from_position.name.lower()} to {to_position.name.lower()} for {team}.")
-        print(f"Swapped players: {player_in_from_position} <-> {player_in_to_position}")
+    # If there was a player in the to_position before, handle swapping
+    # if from_position and previous_player_in_to_position is not None:
+    #     game_state.set_position_player(team, from_position, previous_player_in_to_position)
+    #     print(f"Swapped players: {previous_player_in_to_position} <-> {player_name}")
 
-    # Update pitcher if necessary
-    # if from_position_name == 'pitcher':
-    #     setattr(game_state, f"{team}_pitcher", None)  # Clear the current pitcher
-    #     print(f"Cleared pitcher for {team} team as {player_name} moved to DH.")
-    # elif to_position_name == 'pitcher':
-    #     setattr(game_state, f"{team}_pitcher", player_id)
-    #     print(f"Set {player_name} as the new pitcher for {team} team.")
+
+def _map_position_name_to_enum(position_name):
+    # Clean the position name by removing any periods and extra whitespace
+    cleaned_position_name = position_name.replace('.', '').strip().lower()
+
+    # Map cleaned position names to the FieldPosition enum
+    position_mapping = {
+        "catcher": FieldPosition.CATCHER,
+        "first baseman": FieldPosition.FIRST_BASE,
+        "second baseman": FieldPosition.SECOND_BASE,
+        "third baseman": FieldPosition.THIRD_BASE,
+        "shortstop": FieldPosition.SHORTSTOP,
+        "left fielder": FieldPosition.LEFT_FIELD,
+        "left field": FieldPosition.LEFT_FIELD,
+        "center fielder": FieldPosition.CENTER_FIELD,
+        "center field": FieldPosition.CENTER_FIELD,
+        "right fielder": FieldPosition.RIGHT_FIELD,
+        "right field": FieldPosition.RIGHT_FIELD,
+        "pitcher": None,  # Pitcher is handled separately in the logic
+        "designated hitter": FieldPosition.DESIGNATED_HITTER
+    }
+    return position_mapping.get(cleaned_position_name)
+
+
+def handle_pickoff_error_1b(description, game_state, player_map):
+    print("Handling Pickoff Error at 1B")
+    scored_players = []
+
+    if "scores" in description:
+        for player_name in player_map.values():
+            if process_name(player_name) in description.lower():
+                player_id = get_closest_player_id(player_name, player_map)
+                if not player_id:
+                    print(f"Warning: Player '{player_name}' not found in player map.")
+                    continue
+                for base, occupant in game_state.bases_occupied.items():
+                    if occupant == player_id:
+                        game_state.bases_occupied[base] = -1
+                        scored_players.append(player_id)
+                        print(f"Player '{player_name}' (ID: {player_id}) scored.")
+                        break
+
+    runner_on_first = game_state.bases_occupied.get(Base.FIRST, -1)
+    runner_on_second = game_state.bases_occupied.get(Base.SECOND, -1)
+
+    if runner_on_first != -1 and runner_on_first not in scored_players:
+        game_state.bases_occupied[Base.FIRST] = -1
+        game_state.bases_occupied[Base.SECOND] = runner_on_first
+        print(f"Runner on 1st (Player ID: {runner_on_first}) advanced to 2nd.")
+
+    if runner_on_second != -1 and runner_on_second not in scored_players:
+        game_state.bases_occupied[Base.SECOND] = -1
+        game_state.bases_occupied[Base.THIRD] = runner_on_second
+        print(f"Runner on 2nd (Player ID: {runner_on_second}) advanced to 3rd.")
+
+
+def handle_pickoff_error_2b(description, game_state, player_map):
+    print("Handling Pickoff Error at 2B")
+    scored_players = []
+
+    if "scores" in description:
+        for player_name in player_map.values():
+            if process_name(player_name) in description.lower():
+                player_id = get_closest_player_id(player_name, player_map)
+                if not player_id:
+                    print(f"Warning: Player '{player_name}' not found in player map.")
+                    continue
+                for base, occupant in game_state.bases_occupied.items():
+                    if occupant == player_id:
+                        game_state.bases_occupied[base] = -1
+                        scored_players.append(player_id)
+                        print(f"Player '{player_name}' (ID: {player_id}) scored.")
+                        break
+
+    runner_on_second = game_state.bases_occupied.get(Base.SECOND, -1)
+    runner_on_first = game_state.bases_occupied.get(Base.FIRST, -1)
+
+    if runner_on_second != -1 and runner_on_second not in scored_players:
+        game_state.bases_occupied[Base.SECOND] = -1
+        game_state.bases_occupied[Base.THIRD] = runner_on_second
+        print(f"Runner on 2nd (Player ID: {runner_on_second}) advanced to 3rd.")
+
+    if runner_on_first != -1 and runner_on_first not in scored_players:
+        game_state.bases_occupied[Base.FIRST] = -1
+        game_state.bases_occupied[Base.SECOND] = runner_on_first
+        print(f"Runner on 1st (Player ID: {runner_on_first}) advanced to 2nd.")
+
+
+def handle_pickoff_error_3b(description, game_state, player_map):
+    print("Handling Pickoff Error at 3B")
+    scored_players = []
+
+    if "scores" in description:
+        for player_name in player_map.values():
+            if process_name(player_name) in description.lower():
+                player_id = get_closest_player_id(player_name, player_map)
+                if not player_id:
+                    print(f"Warning: Player '{player_name}' not found in player map.")
+                    continue
+                for base, occupant in game_state.bases_occupied.items():
+                    if occupant == player_id:
+                        game_state.bases_occupied[base] = -1
+                        scored_players.append(player_id)
+                        print(f"Player '{player_name}' (ID: {player_id}) scored.")
+                        break
+
+    # No further base advancements as the pickoff error occurred at 3B
+    # and any runners on bases would have been handled above
 
 
 def _extract_players_from_def_sub_desc(description):
@@ -727,5 +722,6 @@ event_handlers = {
     "Offensive Substitution": handle_offensive_sub,
 }
 
-# if __name__ == "__main__":
-
+if __name__ == "__main__":
+    game_state = GameState()
+    handle_pitching_sub('Pitching Change: Michael Fulmer replaces Mark Leiter Jr.', game_state, {})

@@ -78,7 +78,7 @@ class GameState:
         else:
             raise ValueError("Team must be 'home' or 'away'")
 
-    def create_decision_point(self, event, is_decision) -> dict:
+    def create_decision_point(self, event, is_decision, player_map) -> dict:
         decision_point = {
             "Event_Type": event,
             "Is_Decision": is_decision,
@@ -88,24 +88,37 @@ class GameState:
             "Score_Deficit": self.score_home - self.score_away,
             "Outs": self.outs,
             "BasesOccupied": {
-                "First_Base": self.bases_occupied[Base.FIRST],
-                "Second_Base": self.bases_occupied[Base.SECOND],
-                "Third_Base": self.bases_occupied[Base.THIRD]
+                "First_Base": self._get_player_representation(self.bases_occupied[Base.FIRST], player_map),
+                "Second_Base": self._get_player_representation(self.bases_occupied[Base.SECOND], player_map),
+                "Third_Base": self._get_player_representation(self.bases_occupied[Base.THIRD], player_map)
             },
-            "Home_Pitcher": self.home_pitcher,
-            "Away_Pitcher": self.away_pitcher,
+            "Home_Pitcher": self._get_player_representation(self.home_pitcher, player_map),
+            "Away_Pitcher": self._get_player_representation(self.away_pitcher, player_map),
         }
 
-        # Add individual lineup positions
+        # Add individual lineup positions with player ID and name
         for i in range(9):
-            decision_point[f"Home_Lineup_{i + 1}"] = self.home_lineup[i]
-            decision_point[f"Away_Lineup_{i + 1}"] = self.away_lineup[i]
+            decision_point[f"Home_Lineup_{i + 1}"] = self._get_player_representation(self.home_lineup[i], player_map)
+            decision_point[f"Away_Lineup_{i + 1}"] = self._get_player_representation(self.away_lineup[i], player_map)
 
-        # Add position players
-        decision_point["HomePositionPlayers"] = self.home_position_players
-        decision_point["AwayPositionPlayers"] = self.away_position_players
+        # Add position players with player ID and name
+        decision_point["HomePositionPlayers"] = {
+            pos: self._get_player_representation(player_id, player_map)
+            for pos, player_id in self.home_position_players.items()
+        }
+        decision_point["AwayPositionPlayers"] = {
+            pos: self._get_player_representation(player_id, player_map)
+            for pos, player_id in self.away_position_players.items()
+        }
 
         return decision_point
+
+    def _get_player_representation(self, player_id, player_map):
+        """Helper method to concatenate the player ID and name for easier debugging."""
+        if player_id is None or player_id == -1:
+            return None
+        player_name = player_map.get(player_id, "Unknown")
+        return f"{player_id} - {player_name}"
 
     def empty_bases(self):
         self.bases_occupied = {
