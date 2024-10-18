@@ -1,0 +1,11 @@
+Error processing game 718570: invalid literal for int() with base 10: 'order'
+Traceback (most recent call last):
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 91, in create_dataset
+    process_event(event, game_state, player_map, output_filename, at_bat_summary, inning_number,
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 204, in process_event
+    result = handler(event['description'], game_state, player_map)
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/event_handlers.py", line 403, in handle_pitching_sub
+    batting_position = int(parts[parts.index("batting") + 1].rstrip(','))
+ValueError: invalid literal for int() with base 10: 'order'
+
+

@@ -395,12 +395,16 @@ def handle_defensive_switch(description, game_state, player_map):
             else:
                 game_state.away_has_dh = False
 
+
 def handle_pitching_sub(description, game_state, player_map):
     if "enters the batting order" in description:
         parts = description.split()
         new_player_name = process_name(' '.join(parts[1:3]))
-        old_player_name = process_name(' '.join(parts[-5:-3]))
-        batting_position = parts[parts.index("batting") + 1].rstrip(',')
+        batting_position = next(int(part.rstrip('thstndrd,')) for part in parts if part.rstrip('thstndrd,').isdigit())
+
+        # Find the old player name
+        leave_index = parts.index("leaves")
+        old_player_name = process_name(' '.join(parts[leave_index - 2:leave_index]))
 
         new_player_id = get_closest_player_id(new_player_name, player_map)
         old_player_id = get_closest_player_id(old_player_name, player_map)
@@ -409,15 +413,18 @@ def handle_pitching_sub(description, game_state, player_map):
             return
 
         team = 'home' if game_state.half == Half.TOP else 'away'
-        _replace_in_batting_order(game_state, team, old_player_id, new_player_id)
+        _replace_in_batting_order(game_state, team, old_player_id, new_player_id, batting_position)
         return
 
-    match = re.match(r"Pitching Change:\s*(.+?)\s+replaces\s+(.+?)(?:,\s*batting.*)?\.?$", description)
+    match = re.match(
+        r"Pitching Change:\s*(.+?)\s+replaces\s+(.+?)(?:,\s*batting\s+(\d+)(?:th|st|nd|rd))?(?:,\s*replacing.*)?\.?$",
+        description)
     if not match:
         return
 
     new_pitcher_name = process_name(match.group(1))
     old_pitcher_name = process_name(match.group(2))
+    batting_position = int(match.group(3)) if match.group(3) else None
 
     new_pitcher_id = get_closest_player_id(new_pitcher_name, player_map)
     old_pitcher_id = get_closest_player_id(old_pitcher_name, player_map)
@@ -428,11 +435,9 @@ def handle_pitching_sub(description, game_state, player_map):
     team = 'home' if game_state.half == Half.TOP else 'away'
     _replace_position_player(game_state, team, old_pitcher_id, new_pitcher_id)
 
-    # If the DH has been forfeited, update the batting order
-    has_dh = game_state.home_has_dh if team == 'home' else game_state.away_has_dh
-    if not has_dh:
-        # If there's no DH, the pitcher is in the batting order
-        _replace_in_batting_order(game_state, team, old_pitcher_id, new_pitcher_id)
+    # If there's no DH, or a batting position is specified, update the batting order
+    if game_state.get_position_player(team, FieldPosition.DESIGNATED_HITTER) is None or batting_position:
+        _replace_in_batting_order(game_state, team, old_pitcher_id, new_pitcher_id, batting_position)
 
 
 def _map_position_name_to_enum(position_name):
@@ -620,17 +625,22 @@ def _replace_position_player(game_state, team, old_player_id, new_player_id):
             game_state.away_pitcher = new_player_id
 
 
-def _replace_in_batting_order(game_state, team, old_player_id, new_player_id):
+def _replace_in_batting_order(game_state, team, old_player_id, new_player_id, batting_position=None):
     lineup = game_state.home_lineup if team == 'home' else game_state.away_lineup
 
-    # Find the old player in the batting lineup and replace them with the new player
-    for idx, player_id in enumerate(lineup):
-        if player_id == old_player_id:
-            lineup[idx] = new_player_id
-            print(f"Replaced {old_player_id} with {new_player_id} in the {team} batting order at position {idx}.")
-            return
+    if batting_position is not None:
+        # If a batting position is specified, insert the new player at that position
+        lineup[batting_position - 1] = new_player_id
+        print(f"Inserted {new_player_id} into the {team} batting order at position {batting_position}.")
+    else:
+        # Find the old player in the batting lineup and replace them with the new player
+        for idx, player_id in enumerate(lineup):
+            if player_id == old_player_id:
+                lineup[idx] = new_player_id
+                print(f"Replaced {old_player_id} with {new_player_id} in the {team} batting order at position {idx + 1}.")
+                return
 
-
+        print(f"Warning: Could not find {old_player_id} in the {team} batting order to replace with {new_player_id}.")
 def remove_middle_initials(name):
     # Pattern to match names with one or more middle initials (case insensitive)
     pattern = r'^(\w+)\s+(?:[A-Za-z]\.?\s+)+(\w+)$'
