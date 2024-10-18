@@ -9,11 +9,12 @@ from game_state import Base as Base
 from event_handlers import event_handlers
 from csv_utils import initialize_csv, write_decision_point_to_csv
 from statcast_at_bats import get_at_bat_summary_for_game
+from event_handlers import process_name, get_closest_player_id
 
 
 def create_dataset(num_games):
     driver = setup_webdriver()
-    game_url_df = pd.read_csv("urls/gameday_urls2023.csv")
+    game_url_df = pd.read_csv("urls/ohtani_games.csv")
     os.makedirs('games', exist_ok=True)
     error_log = []
 
@@ -29,9 +30,9 @@ def create_dataset(num_games):
             summary_url = row['summary_url']
             home_abbr = row['home_abbr']
             away_abbr = row['away_abbr']
-
-            if game_pk != 718611:
-                continue
+            #
+            # if game_pk != 717573:
+            #     continue
 
             try:
                 # Read the input CSV
@@ -169,8 +170,6 @@ def process_event(event, game_state, player_map, csv_filename, at_bat_summary, i
     print("   gamestate.outs: ", game_state.outs)
 
 
-    # what happened here was that because the offensive sub was in the middle of the at bat, we sunk during the
-    # game delay, then when we got to the offensive sub we weren't able to change it back
     # Check if we can verify our bases before saving off the event
     event_at_bat = event['atbat_index']
     if game_state.at_bat != event_at_bat and event['type'] != 'Intent Walk':
@@ -179,10 +178,19 @@ def process_event(event, game_state, player_map, csv_filename, at_bat_summary, i
         game_state.at_bat = event_at_bat
 
         is_offensive_sub = event['type'] == 'Offensive Substitution'
-        synchronize_bases(game_state, at_bat_summary, is_offensive_sub, event, player_map)
+
+        # the only time when I shouldn't trust synchronize bases is for pickoff caught stealing base and caught stealing base events
+        # because they have the same at bat number as the following event which is going to overwrite their base configuration
+        # and make it so it looks like the runner was already caught out before the event occurs.
+        # we must have a flag we pass in
+        is_caught_stealing = event['type'] in caught_stealing_events
+
+        synchronize_bases(game_state, at_bat_summary, is_offensive_sub, is_caught_stealing, event, player_map)
+
 
         # Verify and correct previous at-bat's base configurations
-        verify_previous_at_bat_bases(csv_filename, previous_at_bat, game_state)
+        if not is_caught_stealing:
+            verify_previous_at_bat_bases(csv_filename, previous_at_bat, game_state)
 
     # We label decision events from chance events
     is_decision = event['type'] in decision_events
@@ -252,7 +260,7 @@ def process_event(event, game_state, player_map, csv_filename, at_bat_summary, i
 #   and wherever one of these methods was used :game_state.away_pitcher or game_state.set_position_player
 #   now we'll call both of them
 
-def synchronize_bases(game_state, at_bat_summary, is_offensive_sub, event, player_map):
+def synchronize_bases(game_state, at_bat_summary, is_offensive_sub, is_caught_stealing, event, player_map):
     at_bat_summary.head()
     current_half = 'Top' if game_state.half == Half.TOP else 'Bot'
     current_at_bat = at_bat_summary[(at_bat_summary['inning'].astype(str) == str(game_state.inning)) &
@@ -270,6 +278,21 @@ def synchronize_bases(game_state, at_bat_summary, is_offensive_sub, event, playe
         Base.SECOND: int(current_at_bat_row['on_2b']) if pd.notna(current_at_bat_row['on_2b']) else -1,
         Base.THIRD: int(current_at_bat_row['on_3b']) if pd.notna(current_at_bat_row['on_3b']) else -1
     }
+
+    # Special handling for caught stealing and pickoff caught stealing events
+    if is_caught_stealing:
+        # Extract player information from the event description
+        player_name = extract_player_name(event['description'])
+        player_id = get_closest_player_id(player_name, player_map)
+        base_to_check, target_base = determine_base_from_description(event['description'])
+
+        if player_id:
+            # Check if the player is already on the expected base
+            runner_on_base = game_state.bases_occupied.get(base_to_check, -1)
+            if runner_on_base != player_id:
+                # Player was not found on the expected base; trust the event description
+                print(f"Adjusting bases: Placing player '{player_name}' (ID: {player_id}) on {base_to_check.name}")
+                new_bases_occupied[base_to_check] = player_id
 
     if is_offensive_sub and "runner" in event['description']:
         # Reverse the base update for pinch-runners
@@ -392,6 +415,51 @@ def verify_decision(event, game_state):
     return False
 
 
+def extract_player_name(description):
+    """
+    Extract the player's name from the event description.
+    Handles different formats for caught stealing and pickoff caught stealing events.
+    """
+    if "picked off" in description.lower():
+        # Handle the pickoff format: "Player picked off and caught stealing ..."
+        try:
+            # Extract the name before "picked off"
+            player_name_part = description.split("picked off")[0].strip().split(",")[-1].strip()
+        except IndexError:
+            print("Warning: Could not extract the player's name for pickoff caught stealing.")
+            return None
+    elif "caught stealing" in description.lower():
+        # Handle the caught stealing format
+        try:
+            if ":" in description:
+                # Format: "Team challenged ..., call on the field was overturned: Player caught stealing ..."
+                player_name_part = description.split(":")[1].split("caught stealing")[0].strip()
+            else:
+                # Format: "Player caught stealing ..."
+                player_name_part = description.split("caught stealing")[0].strip()
+        except IndexError:
+            print("Warning: Could not extract the player's name for caught stealing.")
+            return None
+    else:
+        print("Warning: Description does not match expected formats for caught stealing or pickoff caught stealing.")
+        return None
+
+    # Process and clean the extracted name
+    return process_name(player_name_part)
+
+
+def determine_base_from_description(description):
+    if "2nd base" in description.lower():
+        return Base.FIRST, "2B"
+    elif "3rd base" in description.lower():
+        return Base.SECOND, "3B"
+    elif "home" in description.lower():
+        return Base.THIRD, "Home"
+    else:
+        print("Error: Could not determine which base the player was attempting to steal.")
+        return None, None
+
+
 decision_events = [
     'Pitching Substitution',
     'Offensive Substitution',
@@ -419,6 +487,15 @@ possible_decision_events = [
     'Double',
     'Triple',
     'Injury'
+]
+
+caught_stealing_events = [
+    "Pickoff Caught Stealing 2B",
+    "Pickoff Caught Stealing 3B",
+    "Pickoff Caught Stealing Home",
+    "Caught Stealing 2B",
+    "Caught Stealing 3B",
+    "Caught Stealing Home",
 ]
 
 if __name__ == "__main__":

@@ -302,14 +302,11 @@ def handle_offensive_sub(description, game_state, player_map):
             game_state.home_pitcher = None
             print("found an offensive sub where the person being subbed out is the pitcher")
 
-
+    # We know the player is replaced in the batting order
     _replace_in_batting_order(game_state, team, old_player_id, new_player_id)
+    # But we remain agnostic about who is going to fill the field position and wait til the next defensive switch
+    _replace_position_player(game_state, team, old_player_id, None)
 
-    current_dh = game_state.get_position_player(team, FieldPosition.DESIGNATED_HITTER)
-    if old_player_id != current_dh:
-        _replace_position_player(game_state, team, old_player_id, None)
-    else:
-        _replace_position_player(game_state, team, old_player_id, new_player_id)
 
     if "Pinch-runner" in description:
         _replace_on_base(game_state, old_player_id, new_player_id)
@@ -318,25 +315,6 @@ def handle_offensive_sub(description, game_state, player_map):
     else:
         print(
             f"Pinch-hitter: {new_player_name} (ID: {new_player_id}) replaces {old_player_name} (ID: {old_player_id}) in the batting order.")
-
-
-def handle_defensive_sub(description, game_state, player_map):
-    new_player_name, old_player_name = _extract_players_from_def_sub_desc(description)
-    new_player_id = get_closest_player_id(new_player_name, player_map)
-    old_player_id = get_closest_player_id(old_player_name, player_map)
-
-    team = 'home' if game_state.half == Half.TOP else 'away'
-
-    if new_player_id and old_player_id:
-        print(
-            f"Defensive substitution: {new_player_name} (ID: {new_player_id}) replaces {old_player_name} (ID: {old_player_id}).")
-        _replace_in_batting_order(game_state, team, old_player_id, new_player_id)
-        _replace_position_player(game_state, team, old_player_id, new_player_id)
-    else:
-        if not new_player_id:
-            print(f"Warning: Unable to find new player '{new_player_name}' in player map.")
-        if not old_player_id:
-            print(f"Warning: Unable to find old player '{old_player_name}' in player map.")
 
 
 def handle_defensive_switch(description, game_state, player_map):
@@ -366,10 +344,13 @@ def handle_defensive_switch(description, game_state, player_map):
 
     # Map the to_position name to the corresponding FieldPosition enum
     to_position = _map_position_name_to_enum(to_position_name)
+    print("to_position", to_position)
     if to_position is None:
         print(f"Warning: Could not map '{to_position_name}' to a valid field position.")
         return
 
+    # We should move the player to the to position
+    game_state.set_position_player(team, to_position, player_id)
     # Update the defensive positions in the game state using set_position_player method
     if from_position:
         current_player_in_from_position = game_state.get_position_player(team, from_position)
@@ -377,23 +358,30 @@ def handle_defensive_switch(description, game_state, player_map):
             # Clear the from position if the player is indeed occupying it
             game_state.set_position_player(team, from_position, None)
 
-    # Move the player to the new position
-    game_state.set_position_player(team, to_position, player_id)
 
-    # If the player was the DH and is moving to a defensive position, set DH to None
-    current_dh = game_state.get_position_player(team, FieldPosition.DESIGNATED_HITTER)
-    current_pitcher = game_state.home_pitcher if team == 'home' else game_state.away_pitcher
+def handle_defensive_sub(description, game_state, player_map):
+    new_player_name, old_player_name, target_position = _extract_from_defensive_sub_desc(description)
+    new_player_id = get_closest_player_id(new_player_name, player_map)
+    old_player_id = get_closest_player_id(old_player_name, player_map)
+    target_position = _map_position_name_to_enum(target_position)
 
-    if current_dh == player_id:
-        # The player was the DH, check if they are also the pitcher (Shohei Ohtani case)
-        if player_id != current_pitcher:
-            # The player was the DH and is now playing a defensive position other than pitcher
-            # The DH role is forfeited for the rest of the game
-            game_state.set_position_player(team, FieldPosition.DESIGNATED_HITTER, None)
-            if team == 'home':
-                game_state.home_has_dh = False
-            else:
-                game_state.away_has_dh = False
+    team = 'home' if game_state.half == Half.TOP else 'away'
+
+    if new_player_id:
+        if target_position:
+            # Update the position in the game state
+            game_state.set_position_player(team, target_position, new_player_id)
+            print(f"Placed {new_player_name} (ID: {new_player_id}) at {target_position} for team {team}.")
+        else:
+            print(f"Warning: Unable to determine the target position for '{new_player_name}'.")
+
+        # Update the batting order by replacing the old player with the new player
+        if old_player_id:
+            _replace_in_batting_order(game_state, team, old_player_id, new_player_id)
+        else:
+            print(f"Warning: Unable to find old player '{old_player_name}' in player map.")
+    else:
+        print(f"Warning: Unable to find new player '{new_player_name}' in player map.")
 
 
 def handle_pitching_sub(description, game_state, player_map):
@@ -410,6 +398,7 @@ def handle_pitching_sub(description, game_state, player_map):
         old_player_id = get_closest_player_id(old_player_name, player_map)
 
         if not new_player_id or not old_player_id:
+            print(f"Warning: Player '{new_player_name}' or '{old_player_name}' not found in the player map.")
             return
 
         team = 'home' if game_state.half == Half.TOP else 'away'
@@ -435,8 +424,8 @@ def handle_pitching_sub(description, game_state, player_map):
     team = 'home' if game_state.half == Half.TOP else 'away'
     _replace_position_player(game_state, team, old_pitcher_id, new_pitcher_id)
 
-    # If there's no DH, or a batting position is specified, update the batting order
-    if game_state.get_position_player(team, FieldPosition.DESIGNATED_HITTER) is None or batting_position:
+    # If a batting position is specified, update the batting order
+    if batting_position:
         _replace_in_batting_order(game_state, team, old_pitcher_id, new_pitcher_id, batting_position)
 
 
@@ -599,7 +588,6 @@ def handle_pickoff_caught_stealing(description, game_state, player_map):
 
 def handle_caught_stealing(description, game_state, player_map):
     print("Handling Caught Stealing")
-
     # Check if "caught stealing" occurs exactly once
     if description.lower().count("caught stealing") != 1:
         print("Warning: 'Caught stealing' appears more than once in the description.")
@@ -647,35 +635,6 @@ def handle_caught_stealing(description, game_state, player_map):
         print(f"Player '{player_name}' (ID: {player_id}) was caught stealing {target_base}.")
     else:
         print(f"Warning: No player found on {base_to_check.name} to be caught stealing (Expected Player ID: {player_id}).")
-
-
-def _extract_players_from_def_sub_desc(description):
-    # Remove 'Defensive Substitution:' from the start
-    description = description.replace('Defensive Substitution:', '').strip()
-
-    # Split the description into parts
-    parts = description.split(',')
-
-    # Extract new player name (always comes first)
-    new_player_name = parts[0].strip().split(' replaces ')[0].strip()
-
-    # Find the old player name
-    old_player_pattern = r'replaces\s+(.*?)(?:,|\s*$)'
-    old_player_match = re.search(old_player_pattern, description)
-    old_player_name = old_player_match.group(1) if old_player_match else None
-
-    # Clean up player names
-    if old_player_name:
-        # Remove position if it's included with the old player's name
-        old_player_name = re.sub(
-            r'\b(first baseman|second baseman|shortstop|third baseman|left fielder|right fielder|catcher|center fielder|pitcher)\s+',
-            '', old_player_name)
-        old_player_name = old_player_name.strip()
-
-    old_player_name = remove_middle_initials(old_player_name)
-    new_player_name = remove_middle_initials(new_player_name)
-
-    return new_player_name, old_player_name
 
 
 def _replace_on_base(game_state, old_player_id, new_player_id):
@@ -739,6 +698,41 @@ def _replace_in_batting_order(game_state, team, old_player_id, new_player_id, ba
         print(f"Warning: Could not find {old_player_id} in the {team} batting order to replace with {new_player_id}.")
 
 
+def _extract_from_defensive_sub_desc(description):
+    # Remove 'Defensive Substitution:' from the start
+    description = description.replace('Defensive Substitution:', '').strip()
+
+    # Split the description into parts
+    parts = description.split(',')
+
+    # Extract new player name (always comes first)
+    new_player_name = parts[0].strip().split(' replaces ')[0].strip()
+
+    # Find the old player name
+    old_player_pattern = r'replaces\s+(.*?)(?:,|\s*$)'
+    old_player_match = re.search(old_player_pattern, description)
+    old_player_name = old_player_match.group(1) if old_player_match else None
+
+    # Extract the position the new player is playing
+    position_pattern = r'playing\s+(.*?)(?:,|\s*$)'
+    position_match = re.search(position_pattern, description)
+    target_position = position_match.group(1) if position_match else None
+
+    # Clean up player names
+    if old_player_name:
+        # Remove position if it's included with the old player's name
+        old_player_name = re.sub(
+            r'\b(first baseman|second baseman|shortstop|third baseman|left fielder|right fielder|catcher|center fielder|pitcher)\s+',
+            '', old_player_name)
+        old_player_name = old_player_name.strip()
+
+    # Remove any middle initials from player names
+    old_player_name = remove_middle_initials(old_player_name)
+    new_player_name = remove_middle_initials(new_player_name)
+
+    return new_player_name, old_player_name, target_position
+
+
 def remove_middle_initials(name):
     # Pattern to match names with one or more middle initials (case insensitive)
     pattern = r'^(\w+)\s+(?:[A-Za-z]\.?\s+)+(\w+)$'
@@ -786,6 +780,3 @@ if __name__ == "__main__":
     game_state = GameState()
     handle_pitching_sub('Pitching Change: Michael Fulmer replaces Mark Leiter Jr.', game_state, {})
 
-
-# TODO: Caught Stealing 2B
-# White Sox challenged (tag play), call on the field was overturned: Jeremy Pena caught stealing 2nd base, catcher Yasmani Grandal to shortstop Tim Anderson. 2 Outs

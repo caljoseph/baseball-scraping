@@ -320,9 +320,33 @@ def process_summary(driver, summary_url, home_abbr, away_abbr):
                                     else:
                                         print(
                                             f"      Skipped event due to no current inning: Offensive Substitution - {sub_desc}")
+                            elif "Defensive Substitution:" in event_description_text:
+                                # Use regex to extract all 'Defensive Substitution: <desc>' parts
+                                substitution_pattern = r'Defensive Substitution:\s*(.*?)\.?(?=\s*Defensive Substitution:|$)'
+                                substitutions = re.findall(substitution_pattern, event_description_text, re.IGNORECASE | re.DOTALL)
+                                print(f"      Found {len(substitutions)} defensive substitution(s)")
+
+                                for idx, sub_desc in enumerate(substitutions):
+                                    sub_desc = sub_desc.strip()
+                                    detailed_description = f"Defensive Substitution: {sub_desc}"
+                                    print(f"        Processing substitution {idx+1}: {detailed_description}")
+
+                                    event_entry = {
+                                        "type": "Defensive Sub",
+                                        "description": detailed_description,
+                                        "score_update": score_update,
+                                        "outs_update": outs_update,
+                                        "atbat_index": atbat_index
+                                    }
+
+                                    # Append the event to the current inning's events
+                                    if current_inning and game_summary:
+                                        game_summary[-1]["events"].append(event_entry)
+                                    else:
+                                        print(
+                                            f"      Skipped event due to no current inning: Defensive Substitution - {sub_desc}")
+
                             else:
-
-
                                 event_entry = {
                                     "type": event_type_text,
                                     "description": event_description_text,
