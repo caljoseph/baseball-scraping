@@ -581,7 +581,6 @@ def _extract_players_from_def_sub_desc(description):
     return new_player_name, old_player_name
 
 
-
 def _replace_on_base(game_state, old_player_id, new_player_id):
     for base, occupant in game_state.bases_occupied.items():
         if occupant == old_player_id:
@@ -641,6 +640,8 @@ def _replace_in_batting_order(game_state, team, old_player_id, new_player_id, ba
                 return
 
         print(f"Warning: Could not find {old_player_id} in the {team} batting order to replace with {new_player_id}.")
+
+
 def remove_middle_initials(name):
     # Pattern to match names with one or more middle initials (case insensitive)
     pattern = r'^(\w+)\s+(?:[A-Za-z]\.?\s+)+(\w+)$'
