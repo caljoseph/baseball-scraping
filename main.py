@@ -21,8 +21,8 @@ def create_dataset(num_games):
         for index, row in game_url_df.iterrows():
             if index >= num_games:
                 break
-            if int(index) < 200:
-                continue
+            # if int(index) < 200:
+            #     continue
 
             game_pk = row['game_pk']
             box_url = row['box_url']
@@ -30,8 +30,8 @@ def create_dataset(num_games):
             home_abbr = row['home_abbr']
             away_abbr = row['away_abbr']
 
-            # if game_pk != 718646:
-            #     continue
+            if game_pk != 718570:
+                continue
 
             try:
                 # Read the input CSV

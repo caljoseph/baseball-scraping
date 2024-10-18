@@ -20,17 +20,6 @@ def handle_out(description, game_state, player_map):
     # return f"Updated outs to {outs}. {description}"
 
 
-def remove_middle_initials(name):
-    # Remove middle initials from the name
-    parts = name.split()
-    if len(parts) > 2:
-        # Keep first and last parts
-        parts = [part for part in parts if len(part) > 1]
-        return ' '.join(parts)
-    else:
-        return name
-
-
 def process_name(name):
     parts = name.split()
     if len(parts) >= 3 and all(len(part) == 2 and part.endswith('.') for part in parts[:-1]):
@@ -305,13 +294,14 @@ def handle_offensive_sub(description, game_state, player_map):
     team = 'away' if game_state.half == Half.TOP else 'home'
 
     if team == 'away':
-        old_player_is_pitcher = (game_state.away_pitcher == old_player_id)
+        if(game_state.away_pitcher == old_player_id):
+            game_state.away_pitcher = None
+            print("found an offensive sub where the person being subbed out is the pitcher")
     else:
-        old_player_is_pitcher = (game_state.home_pitcher == old_player_id)
+        if game_state.home_pitcher == old_player_id:
+            game_state.home_pitcher = None
+            print("found an offensive sub where the person being subbed out is the pitcher")
 
-    if old_player_is_pitcher:
-        game_state.away_pitcher = None
-        print("found an offensive sub where the person being subbed out is the pitcher")
 
     _replace_in_batting_order(game_state, team, old_player_id, new_player_id)
 
@@ -328,54 +318,6 @@ def handle_offensive_sub(description, game_state, player_map):
     else:
         print(
             f"Pinch-hitter: {new_player_name} (ID: {new_player_id}) replaces {old_player_name} (ID: {old_player_id}) in the batting order.")
-
-
-def handle_pitching_sub(description, game_state, player_map):
-    if "enters the batting order" in description:
-        parts = description.split()
-        new_player_name = process_name(' '.join(parts[1:3]))
-        old_player_name = process_name(' '.join(parts[-5:-3]))
-        batting_position = parts[parts.index("batting") + 1].rstrip(',')
-
-        new_player_id = get_closest_player_id(new_player_name, player_map)
-        old_player_id = get_closest_player_id(old_player_name, player_map)
-
-        if not new_player_id or not old_player_id:
-            print(
-                f"Warning: Unable to find one or both players in player map. New: '{new_player_name}', Old: '{old_player_name}'")
-            return
-
-        team = 'home' if game_state.half == Half.TOP else 'away'
-        print(f"Replacing {old_player_name} with {new_player_name} in the batting order at position {batting_position}")
-        _replace_in_batting_order(game_state, team, old_player_id, new_player_id)
-        return
-
-    match = re.match(r"Pitching Change:\s*(.+?)\s+replaces\s+(.+?)(?:,\s*batting.*)?\.?$", description)
-    if not match:
-        print(f"Warning: Unable to parse pitching substitution description: '{description}'")
-        return
-
-    new_pitcher_name = process_name(match.group(1))
-    old_pitcher_name = process_name(match.group(2))
-    print(f"New pitcher name: {new_pitcher_name}")
-    print(f"Old pitcher name: {old_pitcher_name}")
-
-    new_pitcher_id = get_closest_player_id(new_pitcher_name, player_map)
-    old_pitcher_id = get_closest_player_id(old_pitcher_name, player_map)
-
-    if not new_pitcher_id or not old_pitcher_id:
-        print(
-            f"Warning: Unable to find one or both pitchers in player map. New: '{new_pitcher_name}', Old: '{old_pitcher_name}'")
-        return
-
-    team = 'home' if game_state.half == Half.TOP else 'away'
-    print(f"Attempting to replace pitcher, {old_pitcher_name} with {new_pitcher_name}")
-    _replace_position_player(game_state, team, old_pitcher_id, new_pitcher_id)
-
-    if not getattr(game_state, f"{team}_has_dh"):
-        _replace_in_batting_order(game_state, team, old_pitcher_id, new_pitcher_id)
-    else:
-        print(f"{team.capitalize()} team has a DH, no need to update the batting order for the pitcher.")
 
 
 def handle_defensive_sub(description, game_state, player_map):
@@ -428,39 +370,69 @@ def handle_defensive_switch(description, game_state, player_map):
         print(f"Warning: Could not map '{to_position_name}' to a valid field position.")
         return
 
-    # Handle special cases involving the pitcher and DH
-    current_pitcher = game_state.home_pitcher if team == 'home' else game_state.away_pitcher
-    current_dh = game_state.get_position_player(team, FieldPosition.DESIGNATED_HITTER)
-    has_dh = game_state.home_has_dh if team == 'home' else game_state.away_has_dh
-
-    # If the team does not have a DH, handle replacements for both the pitcher and DH
-    if not has_dh:
-        if player_id == current_pitcher or player_id == current_dh:
-            # Replace both the pitcher and the DH with the new player
-            print(f"Replacing pitcher and DH for {team}: {player_id}")
-            game_state.set_position_player(team, FieldPosition.DESIGNATED_HITTER, player_id)
-            if team == 'home':
-                game_state.home_pitcher = player_id
-            else:
-                game_state.away_pitcher = player_id
-            return
-
     # Update the defensive positions in the game state using set_position_player method
     if from_position:
         current_player_in_from_position = game_state.get_position_player(team, from_position)
         if current_player_in_from_position == player_id:
             # Clear the from position if the player is indeed occupying it
             game_state.set_position_player(team, from_position, None)
-            print(f"Cleared {from_position.name.lower()} position for {team} team as {player_name} moves.")
 
     # Move the player to the new position
     game_state.set_position_player(team, to_position, player_id)
-    print(f"Moved {player_name} to {to_position.name.lower()} for {team} team.")
 
-    # If there was a player in the to_position before, handle swapping
-    # if from_position and previous_player_in_to_position is not None:
-    #     game_state.set_position_player(team, from_position, previous_player_in_to_position)
-    #     print(f"Swapped players: {previous_player_in_to_position} <-> {player_name}")
+    # If the player was the DH and is moving to a defensive position, set DH to None
+    current_dh = game_state.get_position_player(team, FieldPosition.DESIGNATED_HITTER)
+    current_pitcher = game_state.home_pitcher if team == 'home' else game_state.away_pitcher
+
+    if current_dh == player_id:
+        # The player was the DH, check if they are also the pitcher (Shohei Ohtani case)
+        if player_id != current_pitcher:
+            # The player was the DH and is now playing a defensive position other than pitcher
+            # The DH role is forfeited for the rest of the game
+            game_state.set_position_player(team, FieldPosition.DESIGNATED_HITTER, None)
+            if team == 'home':
+                game_state.home_has_dh = False
+            else:
+                game_state.away_has_dh = False
+
+def handle_pitching_sub(description, game_state, player_map):
+    if "enters the batting order" in description:
+        parts = description.split()
+        new_player_name = process_name(' '.join(parts[1:3]))
+        old_player_name = process_name(' '.join(parts[-5:-3]))
+        batting_position = parts[parts.index("batting") + 1].rstrip(',')
+
+        new_player_id = get_closest_player_id(new_player_name, player_map)
+        old_player_id = get_closest_player_id(old_player_name, player_map)
+
+        if not new_player_id or not old_player_id:
+            return
+
+        team = 'home' if game_state.half == Half.TOP else 'away'
+        _replace_in_batting_order(game_state, team, old_player_id, new_player_id)
+        return
+
+    match = re.match(r"Pitching Change:\s*(.+?)\s+replaces\s+(.+?)(?:,\s*batting.*)?\.?$", description)
+    if not match:
+        return
+
+    new_pitcher_name = process_name(match.group(1))
+    old_pitcher_name = process_name(match.group(2))
+
+    new_pitcher_id = get_closest_player_id(new_pitcher_name, player_map)
+    old_pitcher_id = get_closest_player_id(old_pitcher_name, player_map)
+
+    if not new_pitcher_id or not old_pitcher_id:
+        return
+
+    team = 'home' if game_state.half == Half.TOP else 'away'
+    _replace_position_player(game_state, team, old_pitcher_id, new_pitcher_id)
+
+    # If the DH has been forfeited, update the batting order
+    has_dh = game_state.home_has_dh if team == 'home' else game_state.away_has_dh
+    if not has_dh:
+        # If there's no DH, the pitcher is in the batting order
+        _replace_in_batting_order(game_state, team, old_pitcher_id, new_pitcher_id)
 
 
 def _map_position_name_to_enum(position_name):
@@ -604,28 +576,6 @@ def _extract_players_from_def_sub_desc(description):
     return new_player_name, old_player_name
 
 
-def _replace_in_batting_order(game_state, team, old_player_id, new_player_id):
-    lineup = game_state.home_lineup if team == 'home' else game_state.away_lineup
-
-    # We check if the team lost their DH then we need to apply this replacement to both the pitcher and the DH
-    if not getattr(game_state, f"{team}_has_dh"):
-        # Check if the old player is the current pitcher and replace them in the batting order
-        old_pitcher = game_state.home_pitcher if team == 'home' else game_state.away_pitcher
-        if old_player_id == old_pitcher:
-            for idx, player_id in enumerate(lineup):
-                if player_id == old_player_id:
-                    lineup[idx] = new_player_id
-                    print(
-                        f"Replaced pitcher/DH {old_player_id} with {new_player_id} in the {team} batting order at position {idx}.")
-                    return
-
-    # Find the old player in the batting lineup
-    for idx, player_id in enumerate(lineup):
-        if player_id == old_player_id:
-            lineup[idx] = new_player_id
-            print(f"Replaced {old_player_id} with {new_player_id} in the {team} batting order at position {idx}.")
-            return
-
 
 def _replace_on_base(game_state, old_player_id, new_player_id):
     for base, occupant in game_state.bases_occupied.items():
@@ -641,38 +591,20 @@ def _replace_position_player(game_state, team, old_player_id, new_player_id):
     print(" team: ", team)
     print(" old_player_id: ", old_player_id)
     print(" new_player_id: ", new_player_id)
+
     # Determine which team's position players and flags we are working with
     if team == 'home':
         position_players = game_state.home_position_players
-        has_dh = game_state.home_has_dh
         current_pitcher = game_state.home_pitcher
-        current_dh = game_state.get_position_player(team, FieldPosition.DESIGNATED_HITTER)
     elif team == 'away':
         position_players = game_state.away_position_players
-        has_dh = game_state.away_has_dh
         current_pitcher = game_state.away_pitcher
-        current_dh = game_state.get_position_player(team, FieldPosition.DESIGNATED_HITTER)
     else:
         raise ValueError("Team must be 'home' or 'away'")
 
     print(" current_pitcher: ", current_pitcher)
-    print(" current_dh: ", current_dh)
 
-    # This will determine if we need to perform the same action on both the pitcher and DH
-    # Assuming the replacement even involves one of them
-    if not has_dh:
-        # Check if we're replacing pitcher or DH
-        if old_player_id == current_pitcher or old_player_id == current_dh:
-            # Replace both the pitcher and the DH with the new player
-            print(f"Replacing pitcher and DH for {team}: {old_player_id} with {new_player_id}")
-            game_state.set_position_player(team, FieldPosition.DESIGNATED_HITTER, new_player_id)
-            if team == 'home':
-                game_state.home_pitcher = new_player_id
-            else:
-                game_state.away_pitcher = new_player_id
-            return
-
-    # If the old player is a position player, replace them in their field position
+    # Replace a position player in the field
     for position, player_id in position_players.items():
         if player_id == old_player_id:
             print(f"Replacing {old_player_id} at {position} with {new_player_id} for {team}")
@@ -686,6 +618,17 @@ def _replace_position_player(game_state, team, old_player_id, new_player_id):
             game_state.home_pitcher = new_player_id
         else:
             game_state.away_pitcher = new_player_id
+
+
+def _replace_in_batting_order(game_state, team, old_player_id, new_player_id):
+    lineup = game_state.home_lineup if team == 'home' else game_state.away_lineup
+
+    # Find the old player in the batting lineup and replace them with the new player
+    for idx, player_id in enumerate(lineup):
+        if player_id == old_player_id:
+            lineup[idx] = new_player_id
+            print(f"Replaced {old_player_id} with {new_player_id} in the {team} batting order at position {idx}.")
+            return
 
 
 def remove_middle_initials(name):
@@ -728,3 +671,9 @@ event_handlers = {
 if __name__ == "__main__":
     game_state = GameState()
     handle_pitching_sub('Pitching Change: Michael Fulmer replaces Mark Leiter Jr.', game_state, {})
+
+
+# TODO: switch up how I'm tying the pitcher and DH together when they lose the DH, they really should just lose their DH completely like it should be set to null
+
+# TODO: handle this crazy event Offensive Substitution: Pinch-runner Gunnar Henderson replaces Ramon Urias.
+# Offensive Substitution: Pinch-hitter Ryan O'Hearn replaces James McCann.
