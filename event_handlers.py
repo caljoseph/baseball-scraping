@@ -552,6 +552,51 @@ def handle_pickoff_error_3b(description, game_state, player_map):
     # and any runners on bases would have been handled above
 
 
+def handle_pickoff_caught_stealing(description, game_state, player_map):
+    print("Handling Pickoff Caught Stealing")
+
+    # Check if "picked off" occurs exactly once
+    if description.lower().count("picked off") != 1:
+        print("Error: 'Picked off' appears more than once in the description.")
+        return
+
+    # Extract the player's name who was picked off
+    try:
+        player_name_part = description.split("picked off")[0].split(",")[-1].strip()
+        player_name = process_name(player_name_part)
+    except IndexError:
+        print("Error: Could not find player's name in the description.")
+        return
+
+    # Resolve the player ID using the player map
+    player_id = get_closest_player_id(player_name, player_map)
+    if not player_id:
+        print(f"Warning: Player '{player_name}' not found in the player map.")
+        return
+
+    # Determine which base the player was attempting to steal based on the description
+    if "stealing 2nd base" in description.lower():
+        base_to_check = Base.FIRST
+        target_base = "2B"
+    elif "stealing 3rd base" in description.lower():
+        base_to_check = Base.SECOND
+        target_base = "3B"
+    elif "stealing home" in description.lower():
+        base_to_check = Base.THIRD
+        target_base = "Home"
+    else:
+        print("Error: Could not determine which base the player was attempting to steal.")
+        return
+
+    # Check if the player is on the expected base and update the game state
+    runner_on_base = game_state.bases_occupied.get(base_to_check, -1)
+    if runner_on_base == player_id:
+        game_state.bases_occupied[base_to_check] = -1
+        print(f"Player '{player_name}' (ID: {player_id}) was picked off and caught stealing {target_base}.")
+    else:
+        print(f"Warning: No player found on {base_to_check.name} to pick off (Expected Player ID: {player_id}).")
+
+
 def _extract_players_from_def_sub_desc(description):
     # Remove 'Defensive Substitution:' from the start
     description = description.replace('Defensive Substitution:', '').strip()
@@ -677,6 +722,10 @@ event_handlers = {
     "Defensive Sub": handle_defensive_sub,
     "Defensive Switch": handle_defensive_switch,
     "Offensive Substitution": handle_offensive_sub,
+    "Pickoff Caught Stealing 2B": handle_pickoff_caught_stealing,
+    "Pickoff Caught Stealing 3B": handle_pickoff_caught_stealing,
+    "Pickoff Caught Stealing Home": handle_pickoff_caught_stealing,
+
 }
 
 if __name__ == "__main__":

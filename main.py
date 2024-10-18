@@ -30,8 +30,8 @@ def create_dataset(num_games):
             home_abbr = row['home_abbr']
             away_abbr = row['away_abbr']
 
-            # if game_pk != 718570:
-            #     continue
+            if game_pk != 718438:
+                continue
 
             try:
                 # Read the input CSV
