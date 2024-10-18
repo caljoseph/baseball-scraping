@@ -13,7 +13,7 @@ from statcast_at_bats import get_at_bat_summary_for_game
 
 def create_dataset(num_games):
     driver = setup_webdriver()
-    game_url_df = pd.read_csv("urls/single_game.csv")
+    game_url_df = pd.read_csv("urls/gameday_urls2023.csv")
     os.makedirs('games', exist_ok=True)
     error_log = []
 
@@ -30,7 +30,7 @@ def create_dataset(num_games):
             home_abbr = row['home_abbr']
             away_abbr = row['away_abbr']
 
-            if game_pk != 718438:
+            if game_pk != 718611:
                 continue
 
             try:
@@ -433,3 +433,7 @@ if __name__ == "__main__":
     # # Reset stdout
     # sys.stdout = sys.__stdout__
     # print(f"Processing complete. Output saved to {log_file}")
+
+
+# TODO: Occasionally in mid at bat events like caught stolen base, that event will report the outs of the next event before those outs
+#  are truly there. https://www.mlb.com/gameday/brewers-vs-d-backs/2023/04/11/718611/final/summary/all
