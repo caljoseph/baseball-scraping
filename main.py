@@ -12,9 +12,9 @@ from statcast_at_bats import get_at_bat_summary_for_game
 from event_handlers import process_name, get_closest_player_id
 
 
-def create_dataset(num_games):
+def create_dataset(file_name, num_games):
     driver = setup_webdriver()
-    game_url_df = pd.read_csv("urls/ohtani_games.csv")
+    game_url_df = pd.read_csv(file_name)
     os.makedirs('games', exist_ok=True)
     error_log = []
 
@@ -22,21 +22,16 @@ def create_dataset(num_games):
         for index, row in game_url_df.iterrows():
             if index >= num_games:
                 break
-            # if int(index) < 200:
-            #     continue
 
             game_pk = row['game_pk']
             box_url = row['box_url']
             summary_url = row['summary_url']
             home_abbr = row['home_abbr']
             away_abbr = row['away_abbr']
-            #
-            # if game_pk != 717573:
-            #     continue
 
             try:
                 # Read the input CSV
-                with open('statcast_reduced2023.csv', 'r') as f:
+                with open('helper_files/statcast_reduced2023.csv', 'r') as f:
                     input_csv = f.read()
 
                 # Use the statcast adjuster to get the at-bat summary for this game
@@ -69,7 +64,7 @@ def create_dataset(num_games):
                             game_state.set_position_player(team, field_position, player_id)
 
                 # Print initial game state
-                print_game_state(game_state, home_player_map, away_player_map)
+                print_initial_game_state(game_state, home_player_map, away_player_map)
 
                 # Get the play by play of events
                 game_summary = process_summary(driver, summary_url, home_abbr, away_abbr)
@@ -114,7 +109,7 @@ def create_dataset(num_games):
     print(f"Processed {min(num_games, len(game_url_df))} games.")
 
 
-def print_game_state(game_state, home_player_map, away_player_map):
+def print_initial_game_state(game_state, home_player_map, away_player_map):
     print("\nInitial Game State:")
     print(f"Inning: {game_state.inning} {game_state.half.name}")
     print(f"Score: Away {game_state.score_away} - Home {game_state.score_home}")
@@ -227,38 +222,6 @@ def process_event(event, game_state, player_map, csv_filename, at_bat_summary, i
     if game_state.outs == 3:
         game_state.outs = 0
 
-
-# TODO now we need to maintain the batting order and handle:
-# Offensive Substitution
-# Defensive Switch
-# Defensive Sub
-
-# When an offensive sub occurs ie a pinch hitter or a pinch runner, when offense and defense next switch there will
-# be a corresponding Defensive Switch event for each pinch hitter/runner
-# Defensive Switch
-# Luis Guillorme remains in the game as the second baseman.
-# This is an option, where they just stay in the game. This example Luis stayed in the position he replaced
-# but I imagine they could switch to another position
-
-# Defensive Switch
-# Defensive switch from second base to left field for Jeff McNeil.
-# This example Jeff McNeil was not an offensive sub. I assume this means that we swap the two positions
-# The description starts with 'Defensive Switch'
-
-# Defensive Sub
-# Defensive Substitution: Omar Narvaez replaces Tim Locastro, batting 9th, playing catcher.
-# I believe this one means that Omar Narvaez comes from the bench and we replace Tim's id with his
-
-# There's the scenario where if the DH is put in a different field position then from that point on
-# The pitcher is in the batting order
-# Of course they could pinch hit and put someone else in, but they would be putting a new pitcher the next half for sure
-# We need to notice this situation and handle it as so
-#   When performing a defensive sub, we check if the DH is being subbed in.
-#   If so then we set a flag on our game_state that from this point on the pitcher and DH are the same person
-#   How is that accomplished? We'll probably need a special check in all three of these handlers
-#   and handle_pitcher_sub when this flag is set that applies checks if we're modifying the pitcher or DH
-#   and wherever one of these methods was used :game_state.away_pitcher or game_state.set_position_player
-#   now we'll call both of them
 
 def synchronize_bases(game_state, at_bat_summary, is_offensive_sub, is_caught_stealing, event, player_map):
     at_bat_summary.head()
@@ -500,16 +463,8 @@ caught_stealing_events = [
 
 if __name__ == "__main__":
     num_games = 300
-    create_dataset(num_games)
-    # Redirect stdout to a file
-    # log_file = f"output_{num_games}_games.log"
-    # with open(log_file, 'w') as f:
-    #     sys.stdout = f
-    #     create_dataset(num_games)
-    #
-    # # Reset stdout
-    # sys.stdout = sys.__stdout__
-    # print(f"Processing complete. Output saved to {log_file}")
+    url_file_name = "urls/ohtani_games.csv"
+    create_dataset(url_file_name, num_games)
 
 
 # TODO: Occasionally in mid at bat events like caught stolen base, that event will report the outs of the next event before those outs
