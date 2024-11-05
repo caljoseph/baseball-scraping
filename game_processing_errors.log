@@ -1,0 +1,7 @@
+Error processing game 717662: 666160
+Traceback (most recent call last):
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 116, in create_dataset
+    position = position_map[player_id]
+KeyError: 666160
+
+
