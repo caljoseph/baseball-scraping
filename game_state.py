@@ -117,8 +117,8 @@ class GameState:
         """Helper method to concatenate the player ID and name for easier debugging."""
         if player_id is None or player_id == -1:
             return None
-        player_name = player_map.get(player_id, "Unknown")
-        return f"{player_name}"
+        # player_name = player_map.get(player_id, "Unknown")
+        return f"{player_id}"
 
     def empty_bases(self):
         self.bases_occupied = {
