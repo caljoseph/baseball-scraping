@@ -6,9 +6,17 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import unidecode
-import time
 import re
 from event_handlers import remove_middle_initials
+import json
+import time
+import datetime
+from pathlib import Path
+import pandas as pd
+from typing import Optional
+from dataclasses import dataclass, asdict
+import logging
+from tqdm import tqdm
 
 
 def timeit(method):
@@ -21,14 +29,32 @@ def timeit(method):
 
     return timed
 
-
 @timeit
 def setup_webdriver():
     chrome_options = Options()
     chrome_options.add_argument("--headless")
-    chromedriver_path = "/usr/local/bin/chromedriver"
-    service = Service(chromedriver_path)
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+
+    # Disable images and other media for faster loading
+    chrome_options.add_experimental_option(
+        "prefs",
+        {"profile.managed_default_content_settings.images": 2}
+    )
+
+    service = Service("/usr/local/bin/chromedriver")
     return webdriver.Chrome(service=service, options=chrome_options)
+
+
+def get_element_safely(driver, by, selector, timeout=10):
+    try:
+        element = WebDriverWait(driver, timeout).until(
+            EC.presence_of_element_located((by, selector))
+        )
+        return element
+    except TimeoutException:
+        return None
 
 
 @timeit
@@ -373,3 +399,139 @@ def process_summary(driver, summary_url, home_abbr, away_abbr):
     print(f'  Total processing time: {te_total - ts_total:.2f} seconds')
 
     return game_summary
+
+
+@dataclass
+class GameData:
+    """Container for scraped game data"""
+    away_lineup: list
+    away_sub_ins: list
+    away_player_map: dict
+    away_bullpen: list
+    away_position_map: dict
+    home_lineup: list
+    home_sub_ins: list
+    home_player_map: dict
+    home_bullpen: list
+    home_position_map: dict
+    game_summary: list
+    game_pk: str
+    home_abbr: str
+    away_abbr: str
+
+
+class GameScraper:
+    def __init__(self, games_csv: str, output_dir: str = "scraped_games"):
+        self.games_df = pd.read_csv(games_csv)
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(exist_ok=True)
+
+        # Setup logging
+        log_dir = Path("logs")
+        log_dir.mkdir(exist_ok=True)
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # File handler
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(message)s',
+            handlers=[
+                logging.FileHandler(f"logs/scraping_{timestamp}.log"),
+                logging.StreamHandler()  # Also print to console
+            ]
+        )
+        self.logger = logging
+
+    def _is_game_data_complete(self, game_path: Path) -> bool:
+        """Check if existing game data is complete (has non-empty lineups)."""
+        try:
+            with open(game_path, 'r') as f:
+                game_data = json.load(f)
+                return len(game_data.get('away_lineup', [])) > 0 and len(game_data.get('home_lineup', [])) > 0
+        except (json.JSONDecodeError, FileNotFoundError):
+            return False
+
+    def scrape_games(self, start_index: int = 0, end_index: Optional[int] = None) -> None:
+        """Scrape games and save data, checking for existing files and data completeness."""
+        driver = setup_webdriver()
+        try:
+            games_to_process = self.games_df.iloc[start_index:end_index] if end_index else self.games_df.iloc[
+                                                                                           start_index:]
+
+            self.logger.info(f"Starting scraping of {len(games_to_process)} games")
+            failed_games = []
+
+            for idx, row in tqdm(games_to_process.iterrows(), total=len(games_to_process), desc="Scraping games"):
+                game_pk = str(row['game_pk'])
+                output_path = self.output_dir / f"game_{game_pk}.json"
+
+                # Check if the game file already exists and has complete data
+                if output_path.exists():
+                    if self._is_game_data_complete(output_path):
+                        self.logger.info(f"Game {game_pk} already scraped with complete data, skipping.")
+                        continue
+                    else:
+                        self.logger.info(f"Game {game_pk} exists but has incomplete data, re-scraping.")
+
+                try:
+                    start_time = time.time()
+                    game_data = self._scrape_single_game(driver, row)
+                    self._save_game_data(game_data)
+
+                    elapsed = time.time() - start_time
+                    self.logger.info(f"Game {game_pk} scraped successfully in {elapsed:.2f} seconds")
+
+                except Exception as e:
+                    self.logger.error(f"Failed to scrape game {game_pk}: {str(e)}")
+                    failed_games.append((game_pk, str(e)))
+
+                # Small delay to avoid overwhelming the server
+                time.sleep(1)
+
+            if failed_games:
+                self.logger.error(f"Failed to scrape {len(failed_games)} games:")
+                for game_pk, error in failed_games:
+                    self.logger.error(f"  Game {game_pk}: {error}")
+
+        finally:
+            driver.quit()
+
+    def _scrape_single_game(self, driver, row) -> GameData:
+        """Scrape data for a single game"""
+        # Process box score
+        box_data = process_box(driver, row['box_url'])
+        away_lineup, away_sub_ins, away_player_map, away_bullpen, away_position_map, \
+            home_lineup, home_sub_ins, home_player_map, home_bullpen, home_position_map = box_data
+
+        # Process game summary
+        game_summary = process_summary(driver, row['summary_url'], row['home_abbr'], row['away_abbr'])
+
+        return GameData(
+            away_lineup=away_lineup,
+            away_sub_ins=away_sub_ins,
+            away_player_map=away_player_map,
+            away_bullpen=away_bullpen,
+            away_position_map=away_position_map,
+            home_lineup=home_lineup,
+            home_sub_ins=home_sub_ins,
+            home_player_map=home_player_map,
+            home_bullpen=home_bullpen,
+            home_position_map=home_position_map,
+            game_summary=game_summary,
+            game_pk=str(row['game_pk']),
+            home_abbr=row['home_abbr'],
+            away_abbr=row['away_abbr']
+        )
+
+    def _save_game_data(self, game_data: GameData) -> None:
+        """Save game data to JSON file"""
+        output_path = self.output_dir / f"game_{game_data.game_pk}.json"
+        with open(output_path, 'w') as f:
+            json.dump(asdict(game_data), f)
+
+
+if __name__ == "__main__":
+    # Example usage:
+    # First, scrape all games
+    scraper = GameScraper("urls/gameday_urls2023.csv")
+    scraper.scrape_games(start_index=0)

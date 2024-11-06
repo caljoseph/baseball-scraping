@@ -1,8 +1,6 @@
-import os
-import pandas as pd
 import re
 import traceback
-from scraper import setup_webdriver, process_box, process_summary
+from scraper import setup_webdriver, process_box, process_summary, GameData
 from game_state import GameState, FieldPosition
 from game_state import Half as Half
 from game_state import Base as Base
@@ -10,105 +8,127 @@ from event_handlers import event_handlers
 from csv_utils import initialize_csv, write_decision_point_to_csv
 from statcast_at_bats import get_at_bat_summary_for_game
 from event_handlers import process_name, get_closest_player_id
+import json
+import os
+from pathlib import Path
+import pandas as pd
+
+class GameProcessor:
+    def __init__(self, scraped_dir: str = "scraped_games"):
+        self.scraped_dir = Path(scraped_dir)
+        if not self.scraped_dir.exists():
+            raise ValueError(f"Scraped games directory {scraped_dir} does not exist")
+
+    def load_game_data(self, game_pk: str) -> GameData:
+        """Load game data from storage"""
+        game_path = self.scraped_dir / f"game_{game_pk}.json"
+        if not game_path.exists():
+            raise ValueError(f"No data found for game {game_pk}")
+
+        with open(game_path) as f:
+            data = json.load(f)
+            return GameData(**data)
 
 
-def create_dataset(file_name, num_games):
-    driver = setup_webdriver()
-    game_url_df = pd.read_csv(file_name)
+def create_dataset(num_games: int, input_csv: str, scraped_data_dir: str = "scraped_games"):
+    """Modified version of your create_dataset function that works with stored data"""
+    game_url_df = pd.read_csv(input_csv)
     os.makedirs('games', exist_ok=True)
     error_log = []
+    processor = GameProcessor(scraped_data_dir)
+    with open('helper_files/statcast_reduced2023.csv', 'r') as f:
+        input_csv = f.read()
 
-    try:
-        for index, row in game_url_df.iterrows():
-            if index >= num_games:
-                break
+    for index, row in game_url_df.iterrows():
+        if index >= num_games:
+            break
 
-            game_pk = row['game_pk']
-            box_url = row['box_url']
-            summary_url = row['summary_url']
-            home_abbr = row['home_abbr']
-            away_abbr = row['away_abbr']
+        game_pk = row['game_pk']
+        try:
+            print(f"\nProcessing game {game_pk}")
+            game_data = processor.load_game_data(str(game_pk))
+            print("Successfully loaded game data")
 
-            try:
-                # Read the input CSV
-                with open('helper_files/statcast_reduced2023.csv', 'r') as f:
-                    input_csv = f.read()
+            at_bat_summary = get_at_bat_summary_for_game(input_csv, str(game_pk))
 
-                # Use the statcast adjuster to get the at-bat summary for this game
-                at_bat_summary = get_at_bat_summary_for_game(input_csv, str(game_pk))
+            # Convert player IDs to integers where needed
+            home_lineup = [int(player_id) if isinstance(player_id, str) else player_id
+                         for player_id in game_data.home_lineup]
+            away_lineup = [int(player_id) if isinstance(player_id, str) else player_id
+                         for player_id in game_data.away_lineup]
+            home_bullpen = [int(player_id) if isinstance(player_id, str) else player_id
+                          for player_id in game_data.home_bullpen]
+            away_bullpen = [int(player_id) if isinstance(player_id, str) else player_id
+                          for player_id in game_data.away_bullpen]
 
-                # Process all the data from the box summary
-                box_data = process_box(driver, box_url)
-                away_lineup, away_sub_ins, away_player_map, away_bullpen, away_position_map, \
-                    home_lineup, home_sub_ins, home_player_map, home_bullpen, home_position_map = box_data
+            # Initialize GameState
+            game_state = GameState(
+                home_abbr=game_data.home_abbr,
+                away_abbr=game_data.away_abbr,
+                home_lineup=home_lineup,
+                away_lineup=away_lineup,
+                home_pitcher=home_bullpen[0] if home_bullpen else None,
+                home_sub_ins=home_bullpen,
+                away_pitcher=away_bullpen[0] if away_bullpen else None,
+                away_sub_ins=away_bullpen,
+            )
 
-                # Initialize GameState
-                game_state = GameState(
-                    home_abbr=home_abbr,
-                    away_abbr=away_abbr,
-                    home_lineup=home_lineup,
-                    away_lineup=away_lineup,
-                    home_pitcher=home_bullpen[0],
-                    home_sub_ins=home_bullpen,
-                    away_pitcher=away_bullpen[0],
-                    away_sub_ins=away_bullpen,
-                )
+            # Make sure the lineups are properly set
+            game_state.home_lineup = home_lineup
+            game_state.away_lineup = away_lineup
 
-                # Initialize positions for both teams
-                for team, lineup, position_map in [('home', home_lineup, home_position_map),
-                                                   ('away', away_lineup, away_position_map)]:
-                    for player_id in lineup:
-                        position = position_map[player_id]
-                        field_position = next((fp for fp in FieldPosition if fp.value == position), None)
-                        if field_position:
-                            game_state.set_position_player(team, field_position, player_id)
+            # Convert position maps to use integer keys
+            home_position_map = {int(k): v for k, v in game_data.home_position_map.items()}
+            away_position_map = {int(k): v for k, v in game_data.away_position_map.items()}
 
-                # Print initial game state
-                print_initial_game_state(game_state, home_player_map, away_player_map)
+            # Initialize positions
+            for team, lineup, position_map in [
+                ('home', home_lineup, home_position_map),
+                ('away', away_lineup, away_position_map)
+            ]:
+                print(f"\nSetting up {team} team positions:")
+                for player_id in lineup:
+                    position = position_map.get(player_id)
+                    print(f"  Player {player_id} position: {position}")
+                    field_position = next((fp for fp in FieldPosition if fp.value == position), None)
+                    if field_position:
+                        game_state.set_position_player(team, field_position, player_id)
+                        print(f"    Set {player_id} to {field_position.name}")
 
-                # Get the play by play of events
-                game_summary = process_summary(driver, summary_url, home_abbr, away_abbr)
+            # Convert player maps to use integer keys
+            home_player_map = {int(k) if isinstance(k, str) else k: v
+                             for k, v in game_data.home_player_map.items()}
+            away_player_map = {int(k) if isinstance(k, str) else k: v
+                             for k, v in game_data.away_player_map.items()}
 
-                # Initialize the output csv
-                output_filename = f'games/game_{game_pk}_decisions.csv'
-                initialize_csv(output_filename)
+            # Print initial state for verification
+            print_initial_game_state(game_state, home_player_map, away_player_map)
 
-                # Combine player maps for easier lookup
-                player_map = {**home_player_map, **away_player_map}
+            output_filename = f'games/game_{game_pk}_decisions.csv'
+            initialize_csv(output_filename)
 
-                # Process each event type
-                for inning in game_summary:
-                    inning_str = inning['inning']
-                    half_str, inning_number_str = inning_str.split()
-                    inning_number = int(inning_number_str[:-2])
-                    half = Half.TOP if half_str == 'Top' else Half.BOTTOM
+            # Combine player maps
+            player_map = {**home_player_map, **away_player_map}
 
-                    for event in inning['events']:
-                        process_event(event, game_state, player_map, output_filename, at_bat_summary, inning_number,
-                                      half)
+            for inning in game_data.game_summary:
+                inning_str = inning['inning']
+                half_str, inning_number_str = inning_str.split()
+                inning_number = int(inning_number_str[:-2])
+                half = Half.TOP if half_str == 'Top' else Half.BOTTOM
 
-                print(f"Decision points for game {game_pk} have been saved to {output_filename}")
+                for event in inning['events']:
+                    process_event(event, game_state, player_map, output_filename,
+                                at_bat_summary, inning_number, half)
 
-            except Exception as e:
-                error_message = f"Error processing game {game_pk}: {str(e)}\n{traceback.format_exc()}"
-                print(error_message)
-                error_log.append(error_message)
+        except Exception as e:
+            error_message = f"Error processing game {game_pk}: {str(e)}\n{traceback.format_exc()}"
+            print(error_message)
+            error_log.append(error_message)
 
-    except Exception as e:
-        print(f"An error occurred outside the game processing loop: {e}")
-    finally:
-        driver.quit()
-
-    # Write error log to file
     if error_log:
         with open('game_processing_errors.log', 'w') as f:
             for error in error_log:
                 f.write(f"{error}\n\n")
-        print(f"Errors encountered during processing. Check 'game_processing_errors.log' for details.")
-
-    print(f"Processed {min(num_games, len(game_url_df))} games.")
-
-
 def print_initial_game_state(game_state, home_player_map, away_player_map):
     print("\nInitial Game State:")
     print(f"Inning: {game_state.inning} {game_state.half.name}")
@@ -461,10 +481,12 @@ caught_stealing_events = [
     "Caught Stealing Home",
 ]
 
+
+# Now that we have the entire 2023 season scraped, the url you input here only determines which game ids we process
 if __name__ == "__main__":
     num_games = 300
-    url_file_name = "urls/ohtani_games.csv"
-    create_dataset(url_file_name, num_games)
+    url_file_name = "urls/gameday_urls2023.csv"
+    create_dataset(num_games, url_file_name)
 
 
 # TODO: Occasionally in mid at bat events like caught stolen base, that event will report the outs of the next event before those outs
