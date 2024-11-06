@@ -29,14 +29,32 @@ def timeit(method):
 
     return timed
 
-
 @timeit
 def setup_webdriver():
     chrome_options = Options()
-    # chrome_options.add_argument("--headless")
-    chromedriver_path = "/usr/local/bin/chromedriver"
-    service = Service(chromedriver_path)
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+
+    # Disable images and other media for faster loading
+    chrome_options.add_experimental_option(
+        "prefs",
+        {"profile.managed_default_content_settings.images": 2}
+    )
+
+    service = Service("/usr/local/bin/chromedriver")
     return webdriver.Chrome(service=service, options=chrome_options)
+
+
+def get_element_safely(driver, by, selector, timeout=10):
+    try:
+        element = WebDriverWait(driver, timeout).until(
+            EC.presence_of_element_located((by, selector))
+        )
+        return element
+    except TimeoutException:
+        return None
 
 
 @timeit
@@ -424,8 +442,17 @@ class GameScraper:
         )
         self.logger = logging
 
+    def _is_game_data_complete(self, game_path: Path) -> bool:
+        """Check if existing game data is complete (has non-empty lineups)."""
+        try:
+            with open(game_path, 'r') as f:
+                game_data = json.load(f)
+                return len(game_data.get('away_lineup', [])) > 0 and len(game_data.get('home_lineup', [])) > 0
+        except (json.JSONDecodeError, FileNotFoundError):
+            return False
+
     def scrape_games(self, start_index: int = 0, end_index: Optional[int] = None) -> None:
-        """Scrape games and save data"""
+        """Scrape games and save data, checking for existing files and data completeness."""
         driver = setup_webdriver()
         try:
             games_to_process = self.games_df.iloc[start_index:end_index] if end_index else self.games_df.iloc[
@@ -435,17 +462,28 @@ class GameScraper:
             failed_games = []
 
             for idx, row in tqdm(games_to_process.iterrows(), total=len(games_to_process), desc="Scraping games"):
+                game_pk = str(row['game_pk'])
+                output_path = self.output_dir / f"game_{game_pk}.json"
+
+                # Check if the game file already exists and has complete data
+                if output_path.exists():
+                    if self._is_game_data_complete(output_path):
+                        self.logger.info(f"Game {game_pk} already scraped with complete data, skipping.")
+                        continue
+                    else:
+                        self.logger.info(f"Game {game_pk} exists but has incomplete data, re-scraping.")
+
                 try:
                     start_time = time.time()
                     game_data = self._scrape_single_game(driver, row)
                     self._save_game_data(game_data)
 
                     elapsed = time.time() - start_time
-                    self.logger.info(f"Game {row['game_pk']} scraped successfully in {elapsed:.2f} seconds")
+                    self.logger.info(f"Game {game_pk} scraped successfully in {elapsed:.2f} seconds")
 
                 except Exception as e:
-                    self.logger.error(f"Failed to scrape game {row['game_pk']}: {str(e)}")
-                    failed_games.append((row['game_pk'], str(e)))
+                    self.logger.error(f"Failed to scrape game {game_pk}: {str(e)}")
+                    failed_games.append((game_pk, str(e)))
 
                 # Small delay to avoid overwhelming the server
                 time.sleep(1)
@@ -492,9 +530,8 @@ class GameScraper:
             json.dump(asdict(game_data), f)
 
 
-
 if __name__ == "__main__":
     # Example usage:
     # First, scrape all games
-    scraper = GameScraper("urls/ohtani_games.csv")
-    scraper.scrape_games()
+    scraper = GameScraper("urls/gameday_urls2023.csv")
+    scraper.scrape_games(start_index=0)

@@ -13,11 +13,6 @@ import os
 from pathlib import Path
 import pandas as pd
 
-
-
-
-
-
 class GameProcessor:
     def __init__(self, scraped_dir: str = "scraped_games"):
         self.scraped_dir = Path(scraped_dir)
@@ -41,6 +36,8 @@ def create_dataset(num_games: int, input_csv: str, scraped_data_dir: str = "scra
     os.makedirs('games', exist_ok=True)
     error_log = []
     processor = GameProcessor(scraped_data_dir)
+    with open('helper_files/statcast_reduced2023.csv', 'r') as f:
+        input_csv = f.read()
 
     for index, row in game_url_df.iterrows():
         if index >= num_games:
@@ -51,9 +48,6 @@ def create_dataset(num_games: int, input_csv: str, scraped_data_dir: str = "scra
             print(f"\nProcessing game {game_pk}")
             game_data = processor.load_game_data(str(game_pk))
             print("Successfully loaded game data")
-
-            with open('helper_files/statcast_reduced2023.csv', 'r') as f:
-                input_csv = f.read()
 
             at_bat_summary = get_at_bat_summary_for_game(input_csv, str(game_pk))
 
@@ -487,9 +481,11 @@ caught_stealing_events = [
     "Caught Stealing Home",
 ]
 
+
+# Now that we have the entire 2023 season scraped, the url you input here only determines which game ids we process
 if __name__ == "__main__":
     num_games = 300
-    url_file_name = "urls/ohtani_games.csv"
+    url_file_name = "urls/gameday_urls2023.csv"
     create_dataset(num_games, url_file_name)
 
 
