@@ -88,9 +88,9 @@ class GameState:
             "At_Bat": self.at_bat,
             "Score_Deficit": self.score_home - self.score_away,
             "Outs": self.outs,
-            "First_Base": self._get_player_representation(self.bases_occupied[Base.FIRST], player_map),
-            "Second_Base": self._get_player_representation(self.bases_occupied[Base.SECOND], player_map),
             "Third_Base": self._get_player_representation(self.bases_occupied[Base.THIRD], player_map),
+            "Second_Base": self._get_player_representation(self.bases_occupied[Base.SECOND], player_map),
+            "First_Base": self._get_player_representation(self.bases_occupied[Base.FIRST], player_map),
             "Home_Pitcher": self._get_player_representation(self.home_pitcher, player_map),
             "Away_Pitcher": self._get_player_representation(self.away_pitcher, player_map),
         }

@@ -119,7 +119,7 @@ def create_dataset(num_games: int, input_csv: str, game_id: int = None, scraped_
             # Define all required columns explicitly
             columns = [
                 "Event_Type", "Is_Decision", "Inning", "Half", "At_Bat", "Score_Deficit", "Outs",
-                "First_Base", "Second_Base", "Third_Base", "Home_Pitcher", "Away_Pitcher"
+                "Third_Base", "Second_Base", "First_Base", "Home_Pitcher", "Away_Pitcher"
             ]
 
             # Add columns for each lineup position for both Home and Away teams
