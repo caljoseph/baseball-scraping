@@ -8,8 +8,8 @@ class Base(Enum):
 
 
 class Half(Enum):
-    TOP = auto()
-    BOTTOM = auto()
+    TOP = "Top"
+    BOTTOM = "Bot"
 
 
 class FieldPosition(Enum):
@@ -22,6 +22,7 @@ class FieldPosition(Enum):
     LEFT_FIELD = "LF"
     CENTER_FIELD = "CF"
     RIGHT_FIELD = "RF"
+
 
 
 class GameState:
@@ -80,18 +81,16 @@ class GameState:
 
     def create_decision_point(self, event, is_decision, player_map) -> dict:
         decision_point = {
-            "Event_Type": event,
+            "Event_Type": event['type'],
             "Is_Decision": is_decision,
             "Inning": self.inning,
-            "Half": self.half,
+            "Half": self.half.value,
             "At_Bat": self.at_bat,
             "Score_Deficit": self.score_home - self.score_away,
             "Outs": self.outs,
-            "BasesOccupied": {
-                "First_Base": self._get_player_representation(self.bases_occupied[Base.FIRST], player_map),
-                "Second_Base": self._get_player_representation(self.bases_occupied[Base.SECOND], player_map),
-                "Third_Base": self._get_player_representation(self.bases_occupied[Base.THIRD], player_map)
-            },
+            "First_Base": self._get_player_representation(self.bases_occupied[Base.FIRST], player_map),
+            "Second_Base": self._get_player_representation(self.bases_occupied[Base.SECOND], player_map),
+            "Third_Base": self._get_player_representation(self.bases_occupied[Base.THIRD], player_map),
             "Home_Pitcher": self._get_player_representation(self.home_pitcher, player_map),
             "Away_Pitcher": self._get_player_representation(self.away_pitcher, player_map),
         }
@@ -102,14 +101,11 @@ class GameState:
             decision_point[f"Away_Lineup_{i + 1}"] = self._get_player_representation(self.away_lineup[i], player_map)
 
         # Add position players with player ID and name
-        decision_point["HomePositionPlayers"] = {
-            pos: self._get_player_representation(player_id, player_map)
-            for pos, player_id in self.home_position_players.items()
-        }
-        decision_point["AwayPositionPlayers"] = {
-            pos: self._get_player_representation(player_id, player_map)
-            for pos, player_id in self.away_position_players.items()
-        }
+        for pos, player_id in self.home_position_players.items():
+            decision_point[f"Home_{pos.value}"] = player_id
+        for pos, player_id in self.away_position_players.items():
+            decision_point[f"Away_{pos.value}"] = player_id
+
 
         return decision_point
 

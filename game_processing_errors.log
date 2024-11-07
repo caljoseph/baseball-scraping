@@ -1,0 +1,110 @@
+Error processing game 718768: no such group
+Traceback (most recent call last):
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 150, in create_dataset
+    process_event(decision_df, event, game_state, player_map,
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 267, in process_event
+    handler(event['description'], game_state, player_map)
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/event_handlers.py", line 362, in attempt_base_update
+    base = match.group(3)
+IndexError: no such group
+
+
+Error processing game 718769: no such group
+Traceback (most recent call last):
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 150, in create_dataset
+    process_event(decision_df, event, game_state, player_map,
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 267, in process_event
+    handler(event['description'], game_state, player_map)
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/event_handlers.py", line 362, in attempt_base_update
+    base = match.group(3)
+IndexError: no such group
+
+
+Error processing game 718772: no such group
+Traceback (most recent call last):
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 150, in create_dataset
+    process_event(decision_df, event, game_state, player_map,
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 267, in process_event
+    handler(event['description'], game_state, player_map)
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/event_handlers.py", line 362, in attempt_base_update
+    base = match.group(3)
+IndexError: no such group
+
+
+Error processing game 718777: no such group
+Traceback (most recent call last):
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 150, in create_dataset
+    process_event(decision_df, event, game_state, player_map,
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 267, in process_event
+    handler(event['description'], game_state, player_map)
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/event_handlers.py", line 362, in attempt_base_update
+    base = match.group(3)
+IndexError: no such group
+
+
+Error processing game 718770: no such group
+Traceback (most recent call last):
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 150, in create_dataset
+    process_event(decision_df, event, game_state, player_map,
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 267, in process_event
+    handler(event['description'], game_state, player_map)
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/event_handlers.py", line 362, in attempt_base_update
+    base = match.group(3)
+IndexError: no such group
+
+
+Error processing game 718767: no such group
+Traceback (most recent call last):
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 150, in create_dataset
+    process_event(decision_df, event, game_state, player_map,
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 267, in process_event
+    handler(event['description'], game_state, player_map)
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/event_handlers.py", line 362, in attempt_base_update
+    base = match.group(3)
+IndexError: no such group
+
+
+Error processing game 718774: no such group
+Traceback (most recent call last):
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 150, in create_dataset
+    process_event(decision_df, event, game_state, player_map,
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 267, in process_event
+    handler(event['description'], game_state, player_map)
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/event_handlers.py", line 362, in attempt_base_update
+    base = match.group(3)
+IndexError: no such group
+
+
+Error processing game 718780: no such group
+Traceback (most recent call last):
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 150, in create_dataset
+    process_event(decision_df, event, game_state, player_map,
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 267, in process_event
+    handler(event['description'], game_state, player_map)
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/event_handlers.py", line 362, in attempt_base_update
+    base = match.group(3)
+IndexError: no such group
+
+
+Error processing game 718778: no such group
+Traceback (most recent call last):
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 150, in create_dataset
+    process_event(decision_df, event, game_state, player_map,
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 267, in process_event
+    handler(event['description'], game_state, player_map)
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/event_handlers.py", line 362, in attempt_base_update
+    base = match.group(3)
+IndexError: no such group
+
+
+Error processing game 718779: no such group
+Traceback (most recent call last):
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 150, in create_dataset
+    process_event(decision_df, event, game_state, player_map,
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/main.py", line 267, in process_event
+    handler(event['description'], game_state, player_map)
+  File "/Users/calebbradshaw/PycharmProjects/baseballScraping/event_handlers.py", line 362, in attempt_base_update
+    base = match.group(3)
+IndexError: no such group
+
+

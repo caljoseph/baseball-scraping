@@ -24,7 +24,7 @@ def timeit(method):
         ts = time.time()
         result = method(*args, **kw)
         te = time.time()
-        print(f'{method.__name__} took {te - ts:.2f} seconds')
+        logging.info(f'{method.__name__} took {te - ts:.2f} seconds')
         return result
 
     return timed
@@ -69,12 +69,12 @@ def get_lineup_subs_and_mapping(driver, team_class):
             EC.presence_of_element_located((By.CSS_SELECTOR, f".{team_class} .batters tbody"))
         )
         te = time.time()
-        print(f'  Waiting for table took {te - ts:.2f} seconds')
+        logging.info(f'  Waiting for table took {te - ts:.2f} seconds')
 
         ts = time.time()
         rows = table.find_elements(By.TAG_NAME, "tr")[:-1]
         te = time.time()
-        print(f'  Finding table rows took {te - ts:.2f} seconds')
+        logging.info(f'  Finding table rows took {te - ts:.2f} seconds')
 
         ts = time.time()
         for row in rows:
@@ -103,10 +103,10 @@ def get_lineup_subs_and_mapping(driver, team_class):
             elif len(lineup) < 9:
                 lineup.append(player_id)
         te = time.time()
-        print(f'  Processing rows took {te - ts:.2f} seconds')
+        logging.info(f'  Processing rows took {te - ts:.2f} seconds')
 
     except Exception as e:
-        print(f"An error occurred while getting the lineup, substitutions, and player mapping: {e}")
+        logging.info(f"An error occurred while getting the lineup, substitutions, and player mapping: {e}")
 
     return lineup, sub_ins, player_id_map, position_map
 
@@ -121,12 +121,12 @@ def get_bullpen_and_mapping(driver, team_class):
             EC.presence_of_element_located((By.CSS_SELECTOR, f".{team_class} .pitchers tbody"))
         )
         te = time.time()
-        print(f'  Waiting for table took {te - ts:.2f} seconds')
+        logging.info(f'  Waiting for table took {te - ts:.2f} seconds')
 
         ts = time.time()
         rows = table.find_elements(By.TAG_NAME, "tr")[:-1]  # Exclude the last row (totals)
         te = time.time()
-        print(f'  Finding table rows took {te - ts:.2f} seconds')
+        logging.info(f'  Finding table rows took {te - ts:.2f} seconds')
 
         ts = time.time()
         for row in rows:
@@ -138,10 +138,10 @@ def get_bullpen_and_mapping(driver, team_class):
             bullpen.append(pitcher_id)
             pitcher_id_map[pitcher_id] = pitcher_name
         te = time.time()
-        print(f'  Processing rows took {te - ts:.2f} seconds')
+        logging.info(f'  Processing rows took {te - ts:.2f} seconds')
 
     except Exception as e:
-        print(f"An error occurred while getting the bullpen information: {e}")
+        logging.info(f"An error occurred while getting the bullpen information: {e}")
 
     return bullpen, pitcher_id_map
 
@@ -149,7 +149,7 @@ def get_bullpen_and_mapping(driver, team_class):
 
 @timeit
 def process_box(driver, box_url):
-    print("processing box for: ", box_url)
+    logging.info("processing box for: ", box_url)
     ts_total = time.time()
 
     ts = time.time()
@@ -157,9 +157,9 @@ def process_box(driver, box_url):
     try:
         driver.get(box_url)
     except TimeoutException:
-        print("Initial page load timed out, attempting to continue anyway")
+        logging.info("Initial page load timed out, attempting to continue anyway")
     te = time.time()
-    print(f'  Loading box page took {te - ts:.2f} seconds')
+    logging.info(f'  Loading box page took {te - ts:.2f} seconds')
 
     # Wait for a key element that indicates the page is interactive
     try:
@@ -167,7 +167,7 @@ def process_box(driver, box_url):
             EC.presence_of_element_located((By.CSS_SELECTOR, ".away-r1"))
         )
     except TimeoutException:
-        print("Timed out waiting for key element, some data may be missing")
+        logging.info("Timed out waiting for key element, some data may be missing")
 
     results = {}
     for team in ['away', 'home']:
@@ -179,9 +179,9 @@ def process_box(driver, box_url):
             results[f'{team}_batter_map'] = batter_map
             results[f'{team}_position_map'] = position_map
         except Exception as e:
-            print(f"Error processing {team} lineup: {e}")
+            logging.info(f"Error processing {team} lineup: {e}")
         te = time.time()
-        print(f'  Processing {team} team lineup took {te - ts:.2f} seconds')
+        logging.info(f'  Processing {team} team lineup took {te - ts:.2f} seconds')
 
         ts = time.time()
         try:
@@ -189,15 +189,15 @@ def process_box(driver, box_url):
             results[f'{team}_bullpen'] = bullpen
             results[f'{team}_pitcher_map'] = pitcher_map
         except Exception as e:
-            print(f"Error processing {team} bullpen: {e}")
+            logging.info(f"Error processing {team} bullpen: {e}")
         te = time.time()
-        print(f'  Processing {team} team bullpen took {te - ts:.2f} seconds')
+        logging.info(f'  Processing {team} team bullpen took {te - ts:.2f} seconds')
 
         # Combine batter and pitcher maps
         results[f'{team}_player_map'] = {**results.get(f'{team}_batter_map', {}), **results.get(f'{team}_pitcher_map', {})}
 
     te_total = time.time()
-    print(f'  Total processing time: {te_total - ts_total:.2f} seconds')
+    logging.info(f'  Total processing time: {te_total - ts_total:.2f} seconds')
 
     return (
         results.get('away_lineup', []), results.get('away_sub_ins', []), results.get('away_player_map', {}),
@@ -217,9 +217,9 @@ def process_summary(driver, summary_url, home_abbr, away_abbr):
     try:
         driver.get(summary_url)
     except TimeoutException:
-        print("Initial page load timed out, attempting to continue anyway")
+        logging.info("Initial page load timed out, attempting to continue anyway")
     te = time.time()
-    print(f'  Loading summary page took {te - ts:.2f} seconds')
+    logging.info(f'  Loading summary page took {te - ts:.2f} seconds')
 
     # Wait for a key element that indicates the page is interactive
     try:
@@ -229,7 +229,7 @@ def process_summary(driver, summary_url, home_abbr, away_abbr):
             )
         )
     except TimeoutException:
-        print("Timed out waiting for key element, some data may be missing")
+        logging.info("Timed out waiting for key element, some data may be missing")
 
     game_summary = []
     current_inning = None
@@ -243,7 +243,7 @@ def process_summary(driver, summary_url, home_abbr, away_abbr):
             "contains(@class, 'SummaryPlaystyle__SummaryPlayWrapper')]"
         )
         te = time.time()
-        print(f'  Finding all events took {te - ts:.2f} seconds')
+        logging.info(f'  Finding all events took {te - ts:.2f} seconds')
 
         ts = time.time()
         for event in events:
@@ -288,10 +288,10 @@ def process_summary(driver, summary_url, home_abbr, away_abbr):
                                 try:
                                     atbat_index = int(atbat_index) + 1  # 0 index -> 1 index
                                 except ValueError:
-                                    print(f"      Invalid atbat-index value: {atbat_index}")
+                                    logging.info(f"      Invalid atbat-index value: {atbat_index}")
                                     atbat_index = None
                             else:
-                                print("      No atbat-index found for this event.")
+                                logging.info("      No atbat-index found for this event.")
 
                             # Process score updates
                             score_update = None
@@ -302,7 +302,7 @@ def process_summary(driver, summary_url, home_abbr, away_abbr):
                                         home_abbr: int(score_updates[1].text.split()[-1])
                                     }
                                 except (IndexError, ValueError) as e:
-                                    print(f"      Error parsing score updates: {e}")
+                                    logging.info(f"      Error parsing score updates: {e}")
 
                             # Process outs updates
                             outs_update = None
@@ -315,22 +315,22 @@ def process_summary(driver, summary_url, home_abbr, away_abbr):
                                     try:
                                         outs_update = int(outs_element.text.strip().split()[0])
                                     except ValueError:
-                                        print(
+                                        logging.info(
                                             f"      Error parsing outs updates for event: {event_type_text} - {event_description_text}")
                             except Exception as e:
-                                print(f"      No outs element found or error: {e}")
+                                logging.info(f"      No outs element found or error: {e}")
 
                             # Handle offensive substitutions specifically
                             if "Offensive Substitution:" in event_description_text:
                                 # Use regex to extract all 'Offensive Substitution: <desc>' parts
                                 substitution_pattern = r'Offensive Substitution:\s*(.*?)\.?(?=\s*Offensive Substitution:|$)'
                                 substitutions = re.findall(substitution_pattern, event_description_text, re.IGNORECASE | re.DOTALL)
-                                print(f"      Found {len(substitutions)} offensive substitution(s)")
+                                logging.info(f"      Found {len(substitutions)} offensive substitution(s)")
 
                                 for idx, sub_desc in enumerate(substitutions):
                                     sub_desc = sub_desc.strip()
                                     detailed_description = f"Offensive Substitution: {sub_desc}"
-                                    print(f"        Processing substitution {idx+1}: {detailed_description}")
+                                    logging.info(f"        Processing substitution {idx+1}: {detailed_description}")
 
                                     event_entry = {
                                         "type": "Offensive Substitution",
@@ -344,18 +344,18 @@ def process_summary(driver, summary_url, home_abbr, away_abbr):
                                     if current_inning and game_summary:
                                         game_summary[-1]["events"].append(event_entry)
                                     else:
-                                        print(
+                                        logging.info(
                                             f"      Skipped event due to no current inning: Offensive Substitution - {sub_desc}")
                             elif "Defensive Substitution:" in event_description_text:
                                 # Use regex to extract all 'Defensive Substitution: <desc>' parts
                                 substitution_pattern = r'Defensive Substitution:\s*(.*?)\.?(?=\s*Defensive Substitution:|$)'
                                 substitutions = re.findall(substitution_pattern, event_description_text, re.IGNORECASE | re.DOTALL)
-                                print(f"      Found {len(substitutions)} defensive substitution(s)")
+                                logging.info(f"      Found {len(substitutions)} defensive substitution(s)")
 
                                 for idx, sub_desc in enumerate(substitutions):
                                     sub_desc = sub_desc.strip()
                                     detailed_description = f"Defensive Substitution: {sub_desc}"
-                                    print(f"        Processing substitution {idx+1}: {detailed_description}")
+                                    logging.info(f"        Processing substitution {idx+1}: {detailed_description}")
 
                                     event_entry = {
                                         "type": "Defensive Sub",
@@ -369,7 +369,7 @@ def process_summary(driver, summary_url, home_abbr, away_abbr):
                                     if current_inning and game_summary:
                                         game_summary[-1]["events"].append(event_entry)
                                     else:
-                                        print(
+                                        logging.info(
                                             f"      Skipped event due to no current inning: Defensive Substitution - {sub_desc}")
 
                             else:
@@ -385,18 +385,18 @@ def process_summary(driver, summary_url, home_abbr, away_abbr):
                                 if current_inning and game_summary:
                                     game_summary[-1]["events"].append(event_entry)
                                 else:
-                                    print(
+                                    logging.info(
                                         f"      Skipped event due to no current inning: {event_type_text} - {event_description_text}")
 
                 except Exception as e:
-                    print(f"    Error processing sub_event: {e}")
+                    logging.info(f"    Error processing sub_event: {e}")
         te = time.time()
-        print(f'  Processing all events took {te - ts:.2f} seconds')
+        logging.info(f'  Processing all events took {te - ts:.2f} seconds')
     except Exception as e:
-        print(f"Error finding or processing events: {e}")
+        logging.info(f"Error finding or processing events: {e}")
 
     te_total = time.time()
-    print(f'  Total processing time: {te_total - ts_total:.2f} seconds')
+    logging.info(f'  Total processing time: {te_total - ts_total:.2f} seconds')
 
     return game_summary
 
