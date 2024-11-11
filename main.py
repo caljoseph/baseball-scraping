@@ -240,6 +240,8 @@ def process_event(decision_df, event, game_state, player_map, at_bat_summary, in
         # Verify and correct previous at-bat's base configurations
         if not is_caught_stealing:
             verify_previous_at_bat_bases(decision_df, previous_at_bat, game_state)
+    elif event['type'] == 'Intent Walk':
+        game_state.at_bat = event_at_bat
 
     # We label decision events from chance events
     is_decision = event['type'] in decision_events
@@ -520,7 +522,7 @@ if __name__ == "__main__":
         logging.disable(logging.CRITICAL)    
     
     num_games = 100
-    game_id = None
+    game_id = 718172
     url_file_name = "urls/gameday_urls2023.csv"
 
     create_dataset(num_games, url_file_name, game_id)
