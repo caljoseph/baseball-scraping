@@ -210,16 +210,13 @@ def attempt_base_update(description, game_state, player_map):
 
     # Step 1: Handle challenge descriptions
     if 'challenged' in description.lower():
-        # Remove everything before 'challenged'
         challenge_index = description.lower().find('challenged')
         description = description[challenge_index:]
-        # Remove everything before 'overturned:' or 'upheld:'
         match = re.search(r'(overturned|upheld):\s*(.*)', description, re.IGNORECASE)
         if match:
             description = match.group(2).strip()
             logging.info(f"Adjusted description after challenge: '{description}'")
         else:
-            # If 'overturned:' or 'upheld:' not found, skip processing
             logging.info("No 'overturned:' or 'upheld:' found after 'challenged'")
             return
 
@@ -254,32 +251,43 @@ def attempt_base_update(description, game_state, player_map):
     action_keywords.sort(key=len, reverse=True)
     action_keywords_pattern = '|'.join(map(re.escape, action_keywords))
 
-    # Adjusted action_regex to handle commas after the action
-    action_regex = re.compile(
-        rf"^(.*?)\s+({action_keywords_pattern})(?:\s+\(.*?\))?(?:\s+[^,]*)?(?:,|$)",
+    main_action = sentences[0]
+
+    # Special handling for intentional walks
+    intentional_walk_match = re.match(
+        r"^(.*?)\s+intentionally walks\s+(.*?)\.?$",
+        main_action,
         re.IGNORECASE
     )
 
-    main_action = sentences[0]
-    action_match = action_regex.match(main_action)
-
-    if action_match:
-        batter_name = action_match.group(1).strip()
-        action = action_match.group(2).lower()
+    if intentional_walk_match:
+        # For intentional walks, the first group is the pitcher and second group is the batter
+        batter_name = intentional_walk_match.group(2).strip()
+        action = "intentionally walks"
     else:
-        # Handle cases where the batter is not at the start
-        alt_action_regex = re.compile(
-            rf"^(.*?)\s+({action_keywords_pattern})\s+(.*?)\.?$",
+        # Regular action handling (unchanged)
+        action_regex = re.compile(
+            rf"^(.*?)\s+({action_keywords_pattern})(?:\s+\(.*?\))?(?:\s+[^,]*)?(?:,|$)",
             re.IGNORECASE
         )
-        alt_match = alt_action_regex.match(main_action)
-        if alt_match:
-            pitcher_name = alt_match.group(1).strip()
-            action = alt_match.group(2).lower()
-            batter_name = alt_match.group(3).strip()
+        action_match = action_regex.match(main_action)
+
+        if action_match:
+            batter_name = action_match.group(1).strip()
+            action = action_match.group(2).lower()
         else:
-            logging.info("No main action found in the description.")
-            return
+            alt_action_regex = re.compile(
+                rf"^(.*?)\s+({action_keywords_pattern})\s+(.*?)\.?$",
+                re.IGNORECASE
+            )
+            alt_match = alt_action_regex.match(main_action)
+            if alt_match:
+                pitcher_name = alt_match.group(1).strip()
+                action = alt_match.group(2).lower()
+                batter_name = alt_match.group(3).strip()
+            else:
+                logging.info("No main action found in the description.")
+                return
 
     batter_id = get_closest_player_id(batter_name, player_map)
     if not batter_id:

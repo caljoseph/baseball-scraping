@@ -29,7 +29,7 @@ class GameState:
     __slots__ = ('home_abbr', 'away_abbr', 'inning', 'half', 'score_home', 'score_away', 'outs',
                  'bases_occupied', 'home_lineup', 'away_lineup',
                  'home_pitcher', 'home_sub_ins', 'away_pitcher', 'away_sub_ins',
-                 'home_position_players', 'away_position_players', 'at_bat', 'home_has_dh', 'away_has_dh',)
+                 'home_position_players', 'away_position_players', 'at_bat', 'home_has_dh', 'away_has_dh', 'prev_half')
 
     def __init__(self, home_abbr=None, away_abbr=None, inning=1, half=Half.TOP, score_home=0, score_away=0, outs=0,
                  bases_occupied=None, home_lineup=None, away_lineup=None,
